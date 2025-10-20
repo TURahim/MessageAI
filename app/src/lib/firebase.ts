@@ -25,3 +25,6 @@ export const db = initializeFirestore(app, {
 
 export const storage = getStorage(app);
 
+// Export app instance for tests
+export { app };
+

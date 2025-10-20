@@ -5,10 +5,10 @@ WhatsApp-style messaging app built with React Native + Expo + Firebase.
 Goal: Production-quality real-time messaging with offline support.
 
 ## Tech Stack
-- **Frontend:** React Native 0.81.4, Expo 54, React Navigation 7, TypeScript 5.9
+- **Frontend:** React Native 0.81.4, Expo 54.0.13, Expo Router 6.0.12, React 19.1.0, TypeScript 5.9
 - **Backend:** Firebase 12.4.0 (Firestore, Auth, Storage)
-- **Development:** pnpm monorepo, Jest 30, React Testing Library
-- **UI:** FlashList for performance
+- **Development:** pnpm (workspace disabled), Jest 29.7, React Testing Library
+- **UI:** FlashList 2.0.2 for performance
 
 ## Core Architecture
 - **Message IDs:** Client-generated UUIDs (idempotent)
@@ -17,24 +17,35 @@ Goal: Production-quality real-time messaging with offline support.
 - **Real-Time:** onSnapshot listeners with cleanup
 - **Optimistic UI:** Messages appear instantly (< 100ms target)
 
-## Data Schema
+## Data Schema (PRD-Compliant)
 ```
-/conversations/{cid}/messages/{mid}
+/users/{uid}
 {
-  mid: UUID,
-  senderId: UID,
-  text: string,
-  clientTs: number,
-  serverTs: Timestamp,
-  state: MessageState,
-  readBy: string[]
+  uid, displayName, photoURL,
+  presence: { status, lastSeen, activeConversationId }
+}
+
+/conversations/{cid}
+{
+  id, type: 'direct'|'group', participants[],
+  lastMessage: { text, senderId, timestamp, type },
+  name (groups only)
+}
+
+/conversations/{cid}/messages/{id}
+{
+  id: UUID, conversationId, senderId, type: 'text'|'image',
+  text, clientTimestamp, serverTimestamp,
+  status: 'sending'|'sent'|'failed',
+  retryCount, readBy[], readCount
 }
 ```
 
 ## Security
-- Firestore rules: Members-only read/write
+- Firestore rules: Participants-only read/write (deployed ✔)
 - Storage rules: Conversation participant validation
 - Firebase config: ✔ in .env (gitignored)
+- Indexes: ✔ deployed (conversationId + serverTimestamp)
 
 ## Performance Targets
 - Message delivery: < 3s (P95)
@@ -50,17 +61,17 @@ Must have to pass checkpoint:
 3. ✅ **Optimistic UI** - Messages appear instantly before server confirmation
 4. ⚠️ **Online/offline status** - User presence indicators
 5. ✅ **Message timestamps** - Display message timing
-6. ⚠️ **User authentication** - Accounts/profiles (currently anonymous)
+6. ✅ **User authentication** - Email/password + profiles in Firestore
 7. ⚠️ **Group chat** - 3+ users in one conversation
 8. ⚠️ **Read receipts** - Message read status
 9. ⚠️ **Push notifications** - At least foreground
-10. ⚠️ **Deployment** - Local emulator + deployed Firebase backend
+10. ⚠️ **Deployment** - Backend deployed, app needs device testing
 
-**Status:** 3/10 complete (messaging infrastructure solid, user features needed)
+**Status:** 5/11 complete (PR #1 & #2 done)
 
 ## Timeline
 - MVP Target: 24 hours from start
-- Current: Scaffolding complete (Step H) - ~4 hours in
-- Remaining: ~20 hours for user features
-- Next: User auth, presence, groups, notifications
+- Current: PR #1 & #2 complete - ~6 hours in
+- Remaining: ~18 hours for 6 features
+- Next: Conversation service, presence, groups, notifications
 

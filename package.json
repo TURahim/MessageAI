@@ -2,6 +2,9 @@
   "name": "messageai",
   "version": "1.0.0",
   "private": true,
+  "scripts": {
+    "dev:app": "pnpm -F app exec expo start -c"
+  },
   "pnpm": {
     "overrides": {
       "react-test-renderer": "19.1.0"

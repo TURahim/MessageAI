@@ -89,10 +89,95 @@
 4. **Firebase Persistence:** Fixed API signature for persistentSingleTabManager
 5. **Mock Setup:** Added messageId mock for tests
 
+## 2025-10-20 - PR #1 & #2 Complete (Expo Router + Auth)
+
+### Completed
+- ✅ **Expo Router Migration** (PR #1)
+  - Removed React Navigation dependencies (-46 packages)
+  - Migrated to file-based routing: (auth)/, (tabs)/, chat/[id]
+  - Added @ alias for imports (babel-plugin-module-resolver)
+  - Updated to PRD-compliant schema (Message, User, Conversation)
+  - Created firestore.indexes.json
+  - Deployed Firestore rules + indexes
+  - Flattened directory structure (removed nested app/app/)
+
+- ✅ **Email/Password Authentication** (PR #2)
+  - Built authService (signUp, signIn, signOut)
+  - Created AuthContext with onAuthStateChanged
+  - Implemented login + signup screens
+  - Built profile screen with sign out
+  - Root layout with auto-redirect logic
+  - User documents created in Firestore with presence schema
+
+- ✅ **Refactor & Cleanup**
+  - Updated messageService.ts to new schema
+  - Fixed all TypeScript errors (0 errors)
+  - Standardized imports with @ alias
+  - All tests passing (13/13)
+  - Disabled PNPM workspace hoisting
+  - Flattened deps to app/node_modules (963 packages)
+  - Removed newArchEnabled from app.json
+  - Simplified babel config (babel-preset-expo only)
+
+### Metrics
+- **Files Modified:** 21
+- **Dependencies Removed:** 2 (React Navigation)
+- **Dependencies Added:** 5 (expo-router, expo-image-picker, expo-notifications, expo-linking, module-resolver)
+- **Packages Installed:** 968 (all in app/node_modules, no hoisting)
+- **Tests:** 13/13 passing
+- **TypeScript:** 0 errors
+- **Time:** ~7 hours (including troubleshooting)
+
+## Troubleshooting Completed (2+ hours)
+- Metro "getDevServer is not a function" error resolved
+- Root cause: expo-router 6.x needed @expo/metro-runtime 6.x
+- Solution: Upgraded to correct SDK 54 package versions
+- Nuclear reset: All simulators, caches, dependencies
+- Final stack: Expo 54 + RN 0.81.4 + React 19.1 + expo-router 6.0.12
+
+## 2025-10-20 - Expo Router "Welcome to Expo" Fix ✅
+
+### Problem
+- App showed "Welcome to Expo" screen instead of loading routes
+- Routes were not being found by Expo Router
+
+### Root Cause
+- Expo Router by default looks for routes in `app/` subdirectory
+- Routes were at project root level, not in nested `app/app/` directory
+- Metro was bundling with `transform.routerRoot=app` parameter
+
+### Solution
+- Moved ALL routes into `app/app/` subdirectory:
+  - `_layout.tsx` and `index.tsx`
+  - `(auth)/` directory with login/signup
+  - `(tabs)/` directory with chats list/profile
+  - `chat/` directory with dynamic [id] route
+- Removed `experiments.routerRoot` from app.json (use default behavior)
+- Cleared all caches (.expo, node_modules/.cache)
+
+### Critical Learning
+**NEVER flatten the nested app/app/ structure!**
+- This is Expo Router's default convention (SDK 50+)
+- Allows separation of routes from config files
+- If routes aren't loading, verify they're in `app/app/`, NOT project root
+
+### Files Changed
+- Moved: `app/_layout.tsx` → `app/app/_layout.tsx`
+- Moved: `app/index.tsx` → `app/app/index.tsx`
+- Moved: `app/(auth)/` → `app/app/(auth)/`
+- Moved: `app/(tabs)/` → `app/app/(tabs)/`
+- Moved: `app/chat/` → `app/app/chat/`
+- Updated: `app/app.json` (removed routerRoot experiment)
+
+### Result
+✅ App now loads correctly with "MessageAI Works!" screen
+✅ Expo Router functioning properly with file-based routing
+✅ Ready to implement conversation features
+
 ## Next Session Focus
-1. Implement user authentication (email/password)
-2. Build conversation list screen
-3. Add user profile management
-4. Create presence system
-5. Implement read receipts
+1. ✅ App loads successfully with nested structure
+2. Test authentication flow (login/signup)
+3. Create conversation service (PR #3-4)
+4. Build users list screen
+5. Implement real conversations list
 

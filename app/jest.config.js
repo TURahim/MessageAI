@@ -1,6 +1,4 @@
-import type { Config } from 'jest'
-
-const config: Config = {
+module.exports = {
   preset: 'react-native',
   setupFilesAfterEnv: ['@testing-library/jest-native/extend-expect'],
   testEnvironment: 'node',
@@ -8,10 +6,11 @@ const config: Config = {
     '^.+\\.(js|jsx|ts|tsx)$': 'babel-jest',
   },
   transformIgnorePatterns: [
-    'node_modules/(?!(react-native|@react-native|@react-navigation|@firebase)/)',
+    'node_modules/(?!(react-native|@react-native|expo-router|expo-auth-session|expo-web-browser|expo-crypto|expo-constants|expo|@firebase|uuid)/)',
   ],
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json'],
-}
-
-export default config
+  moduleNameMapper: {
+    '^@/(.*)$': '<rootDir>/src/$1',
+  },
+};
 

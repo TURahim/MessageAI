@@ -5,7 +5,7 @@ service cloud.firestore {
     // Helper function: checks if the signed-in user is part of a conversation
     function isMember(cid) {
       return request.auth != null &&
-        (get(/databases/$(db)/documents/conversations/$(cid)).data.members
+        (get(/databases/$(db)/documents/conversations/$(cid)).data.participants
           .hasAny([request.auth.uid]));
     }
 

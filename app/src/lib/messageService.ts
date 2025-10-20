@@ -10,16 +10,17 @@ import {
   Unsubscribe,
   QuerySnapshot,
   DocumentData,
+  Timestamp,
 } from "firebase/firestore";
 import { db, auth } from "./firebase";
-import { Message, MessageState } from "../types/message";
+import { Message, MessageStatus } from "../types/message";
 
 /**
  * Sends a message to Firestore with optimistic local state
  */
 export async function sendMessage(
   conversationId: string,
-  message: Omit<Message, "serverTs">
+  message: Omit<Message, "serverTimestamp">
 ): Promise<void> {
   try {
     const messageRef = doc(
@@ -27,13 +28,27 @@ export async function sendMessage(
       "conversations",
       conversationId,
       "messages",
-      message.mid
+      message.id
     );
+
+    const timestamp = serverTimestamp();
 
     await setDoc(messageRef, {
       ...message,
-      serverTs: serverTimestamp(),
-      state: "sent",
+      serverTimestamp: timestamp,
+      status: "sent",
+    });
+
+    // Update conversation's lastMessage
+    const conversationRef = doc(db, "conversations", conversationId);
+    await updateDoc(conversationRef, {
+      lastMessage: {
+        text: message.text,
+        senderId: message.senderId,
+        timestamp: timestamp,
+        type: message.type,
+      },
+      updatedAt: timestamp,
     });
   } catch (error) {
     console.warn("Error sending message:", error);
@@ -42,12 +57,12 @@ export async function sendMessage(
 }
 
 /**
- * Updates the state of a message (e.g., sent -> delivered -> read)
+ * Updates the status of a message (e.g., sent -> failed)
  */
-export async function updateMessageState(
+export async function updateMessageStatus(
   conversationId: string,
   messageId: string,
-  newState: MessageState
+  newStatus: MessageStatus
 ): Promise<void> {
   try {
     const messageRef = doc(
@@ -59,10 +74,10 @@ export async function updateMessageState(
     );
 
     await updateDoc(messageRef, {
-      state: newState,
+      status: newStatus,
     });
   } catch (error) {
-    console.warn("Error updating message state:", error);
+    console.warn("Error updating message status:", error);
     throw error;
   }
 }
@@ -78,17 +93,17 @@ export async function markMessagesAsRead(
     const currentUserId = auth.currentUser?.uid;
     if (!currentUserId) return;
 
-    const promises = messageIds.map((mid) => {
+    const promises = messageIds.map((messageId) => {
       const messageRef = doc(
         db,
         "conversations",
         conversationId,
         "messages",
-        mid
+        messageId
       );
       return updateDoc(messageRef, {
-        state: "read",
         readBy: [currentUserId], // In production, use arrayUnion
+        readCount: 1,
       });
     });
 
@@ -113,7 +128,7 @@ export function subscribeToMessages(
     "messages"
   );
 
-  const q = query(messagesRef, orderBy("serverTs", "desc"));
+  const q = query(messagesRef, orderBy("serverTimestamp", "desc"));
 
   return onSnapshot(
     q,
@@ -121,13 +136,17 @@ export function subscribeToMessages(
       const messages: Message[] = snapshot.docs.map((doc) => {
         const data = doc.data();
         return {
-          mid: doc.id,
+          id: doc.id,
+          conversationId,
           senderId: data.senderId,
-          text: data.text,
-          clientTs: data.clientTs,
-          serverTs: data.serverTs,
-          state: data.state || "sent",
+          type: data.type || "text",
+          text: data.text || "",
+          clientTimestamp: data.clientTimestamp,
+          serverTimestamp: data.serverTimestamp || null,
+          status: data.status || "sent",
+          retryCount: data.retryCount || 0,
           readBy: data.readBy || [],
+          readCount: data.readCount || 0,
         } as Message;
       });
 

@@ -1,13 +1,13 @@
 # Tasks
 
-## Current Sprint: User Features (Phase 2)
+## Current Sprint: Conversations & Presence (Phase 2-3)
 
 ### High Priority
-- [ ] **User Authentication**
-  - Implement email/password auth
-  - Add profile creation (name, photo)
-  - Update AuthScreen with email/password flow
-  - Handle auth state persistence
+- [x] **User Authentication** ✅ PR #2 COMPLETE
+  - Email/password auth (signUpWithEmail, signInWithEmail)
+  - Profile creation with displayName in Firestore
+  - Auth screens (login, signup) with Expo Router
+  - Auth state persistence via AuthContext
 
 - [ ] **Conversation List**
   - Build ChatsScreen with conversation list
@@ -64,16 +64,19 @@
 ## Completed ✅
 - [x] Project setup (pnpm monorepo)
 - [x] Firebase initialization with offline persistence
-- [x] Navigation structure (React Navigation)
+- [x] Navigation structure (Expo Router - migrated from React Navigation)
 - [x] Real-time messaging (Firestore onSnapshot)
 - [x] Optimistic send with UUID IDs
-- [x] Message service (CRUD operations)
+- [x] Message service (CRUD operations, updated to PRD schema)
 - [x] ChatRoomScreen with real-time UI
 - [x] Message state machine
 - [x] Testing setup (Jest + RTL)
-- [x] ChatRoomScreen tests (4/4 passing)
-- [x] TypeScript configuration
-- [x] Security rules (Firestore + Storage)
+- [x] Tests passing (13/13: firebase, auth, messageId)
+- [x] TypeScript configuration with @ alias
+- [x] Security rules (Firestore + Storage, deployed)
+- [x] Firestore indexes (deployed)
 - [x] Project documentation
 - [x] Git repository setup
+- [x] **PR #1: Expo Router migration + setup**
+- [x] **PR #2: Email/password authentication**
 
