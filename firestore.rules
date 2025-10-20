@@ -1,0 +1,28 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{db}/documents {
+
+    // Helper function: checks if the signed-in user is part of a conversation
+    function isMember(cid) {
+      return request.auth != null &&
+        (get(/databases/$(db)/documents/conversations/$(cid)).data.members
+          .hasAny([request.auth.uid]));
+    }
+
+    // --- USERS COLLECTION ---
+    match /users/{uid} {
+      allow read: if request.auth != null; // any signed-in user can see others
+      allow write: if request.auth != null && request.auth.uid == uid; // only self
+    }
+
+    // --- CONVERSATIONS COLLECTION ---
+    match /conversations/{cid} {
+      allow read, write: if isMember(cid); // only members
+
+      // --- NESTED MESSAGES ---
+      match /messages/{mid} {
+        allow read, write: if isMember(cid);
+      }
+    }
+  }
+}
