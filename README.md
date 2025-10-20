@@ -244,39 +244,47 @@ pnpm emu
 
 ---
 
-## 🎯 MVP Features (Planned)
+## 🎯 MVP Requirements (24-Hour Hard Gate)
 
-### Phase 1: Core Messaging ✅ (Current)
-- [x] Real-time text messaging
-- [x] Optimistic UI
-- [x] Offline support
-- [x] Message persistence
-- [x] Idempotent sends
+To pass the MVP checkpoint, the following **must** be complete:
 
-### Phase 2: User Features (Next)
-- [ ] User authentication (email/password)
-- [ ] User profiles (name, photo)
-- [ ] Presence indicators (online/offline)
+### Core Messaging ✅ (3/10 Complete)
+- [x] **One-on-one chat** - Real-time messaging between 2+ users
+- [x] **Message persistence** - Survives app restarts
+- [x] **Optimistic UI** - Messages appear instantly before server confirmation
+
+### User Features ⚠️ (0/7 Complete)
+- [ ] **User authentication** - Accounts/profiles (currently anonymous only)
+- [ ] **Online/offline status** - User presence indicators
+- [ ] **Message timestamps** - Display message timing
+- [ ] **Read receipts** - Message read status
+- [ ] **Group chat** - 3+ users in one conversation
+- [ ] **Push notifications** - At least foreground notifications
+- [ ] **Deployment** - Local emulator + deployed Firebase backend
+
+### MVP Philosophy
+> The MVP isn't about features—it's about proving your messaging infrastructure is solid. A simple chat app with reliable message delivery is worth more than a feature-rich app with messages that don't sync reliably.
+
+**Current Status:** Messaging infrastructure is solid (real-time sync, persistence, optimistic UI). Now building user-facing features.
+
+---
+
+## 🗓️ Post-MVP Features
+
+### Phase 2: Enhanced Features
 - [ ] Typing indicators
-- [ ] Read receipts
-
-### Phase 3: Group Chat
-- [ ] Create group conversations
-- [ ] Add/remove members
-- [ ] Group messaging
-- [ ] Group read receipts
-
-### Phase 4: Media & Polish
 - [ ] Image upload/sharing
 - [ ] Image compression
-- [ ] Message timestamps
 - [ ] Windowed loading (pagination)
 - [ ] Error states & retry UI
 
-### Phase 5: Notifications
-- [ ] Foreground notifications
-- [ ] Notification suppression
-- [ ] Background notifications (post-MVP)
+### Phase 3: Advanced
+- [ ] Background push notifications
+- [ ] Message editing/deletion
+- [ ] Voice messages
+- [ ] File sharing
+- [ ] Message reactions
+- [ ] End-to-end encryption
 
 ---
 

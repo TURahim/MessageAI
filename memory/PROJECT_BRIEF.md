@@ -42,8 +42,25 @@ Goal: Production-quality real-time messaging with offline support.
 - 60fps scroll with 100+ messages
 - Delivery success: > 99.5%
 
+## MVP Requirements (24-Hour Hard Gate)
+
+Must have to pass checkpoint:
+1. ✅ **One-on-one chat** - Real-time messaging between 2+ users
+2. ✅ **Message persistence** - Survives app restarts
+3. ✅ **Optimistic UI** - Messages appear instantly before server confirmation
+4. ⚠️ **Online/offline status** - User presence indicators
+5. ✅ **Message timestamps** - Display message timing
+6. ⚠️ **User authentication** - Accounts/profiles (currently anonymous)
+7. ⚠️ **Group chat** - 3+ users in one conversation
+8. ⚠️ **Read receipts** - Message read status
+9. ⚠️ **Push notifications** - At least foreground
+10. ⚠️ **Deployment** - Local emulator + deployed Firebase backend
+
+**Status:** 3/10 complete (messaging infrastructure solid, user features needed)
+
 ## Timeline
-- MVP Target: 24 hours
-- Current: Scaffolding complete (Step H)
-- Next: User auth, presence, groups
+- MVP Target: 24 hours from start
+- Current: Scaffolding complete (Step H) - ~4 hours in
+- Remaining: ~20 hours for user features
+- Next: User auth, presence, groups, notifications
 

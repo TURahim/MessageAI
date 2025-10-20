@@ -145,35 +145,71 @@
 
 ---
 
-## Acceptance Criteria (Pass/Fail)
+## MVP Requirements (24-Hour Hard Gate)
 
-### Core Messaging
-- ✅ Two users chat in real-time (< 3s latency)
-- ✅ Messages appear instantly for sender (< 100ms)
-- ✅ Messages persist after app restart
-- ✅ No duplicate messages after reconnect
-- ✅ Offline → send → reconnect → auto-send works
+**This is a hard gate.** To pass the MVP checkpoint, you must have:
 
-### Group Chat
-- ✅ Create group with 3+ users
-- ✅ All members receive messages in real-time
-- ✅ Sender name visible in groups
+### Required Features (Must Have)
+1. ✅ **One-on-one chat functionality**
+   - Two users can chat in real-time (< 3s latency)
+   - Messages appear instantly for sender (< 100ms)
+   
+2. ✅ **Real-time message delivery between 2+ users**
+   - Messages sync across devices in real-time
+   - No duplicate messages after reconnect
+   
+3. ✅ **Message persistence (survives app restarts)**
+   - Messages persist after app restart
+   - Offline → send → reconnect → auto-send works
+   
+4. ✅ **Optimistic UI updates**
+   - Messages appear instantly before server confirmation
+   - Clear state indicators (sending → sent)
 
-### Enhanced Features
-- ✅ Presence indicators accurate (online within 5s, offline within 90s)
-- ✅ Read receipts work (1-on-1 and groups)
-- ✅ Images upload and display (< 15s on good network)
-- ✅ Foreground notifications show (suppressed when viewing conversation)
+5. ⚠️ **Online/offline status indicators**
+   - Presence indicators accurate (online within 5s, offline within 90s)
+   - Status updates in real-time
 
-### Performance
+6. ⚠️ **Message timestamps**
+   - Smart formatting (relative/absolute)
+   - Visible in chat UI
+
+7. ⚠️ **User authentication (users have accounts/profiles)**
+   - Email/password or phone auth
+   - User profiles with name and photo
+   - Not just anonymous
+
+8. ⚠️ **Basic group chat functionality (3+ users in one conversation)**
+   - Create group with 3+ users
+   - All members receive messages in real-time
+   - Sender name visible in groups
+
+9. ⚠️ **Message read receipts**
+   - Read receipts work (1-on-1 and groups)
+   - Visual indicators (checkmarks or counts)
+
+10. ⚠️ **Push notifications working (at least in foreground)**
+    - Foreground notifications show
+    - Suppressed when viewing conversation
+
+11. ⚠️ **Deployment**
+    - Backend deployed (Firebase live)
+    - Mobile app runs on device/emulator
+    - Can demo all features end-to-end
+
+### Current Status
+- **Complete:** 4/11 (Core messaging infrastructure)
+- **In Progress:** User features, presence, groups
+- **Time Remaining:** ~20 hours
+
+### MVP Philosophy
+> The MVP isn't about features—it's about proving your messaging infrastructure is solid. A simple chat app with reliable message delivery is worth more than a feature-rich app with messages that don't sync reliably.
+
+### Performance Requirements (Must Pass)
 - ✅ Smooth 60fps scroll with 100+ messages
 - ✅ No memory leaks (all listeners cleaned up)
 - ✅ No crashes on common actions
-
-### Deployment
-- ✅ Backend deployed (Firebase live)
-- ✅ Mobile app runs on device/emulator
-- ✅ Can demo all features end-to-end
+- Delivery success rate: > 99.5%
 
 ---
 
