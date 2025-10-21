@@ -1075,6 +1075,13 @@ describe('imageCompression', () => {
 
 **IMPORTANT:** Requires Expo Dev Client or standalone build for testing. Limited functionality in Expo Go.
 
+**NOTE:** Implementation complete but **requires clarification on notification requirements**:
+- Current: Local notifications triggered when viewing ANY screen (including the chat)
+- Suppression logic in place but may need adjustment
+- Need to better understand: When should notifications appear? Only on home screen? In other chats? 
+- Consider: Global listener vs per-chat listener
+- Deferred detailed testing and refinement to later iteration
+
 **Commit:** `feat: add foreground notifications with presence-based suppression`
 
 ---

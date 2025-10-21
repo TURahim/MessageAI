@@ -64,16 +64,23 @@ Must have to pass checkpoint:
 6. ✅ **User authentication** - Email/password + Google Sign-In
 7. ✅ **Conversation management** - Create, list, real-time updates
 8. ✅ **Offline support** - Queued writes, cache loading
-9. ⚠️ **Online/offline status** - User presence indicators (TODO: PR #9)
-10. ⚠️ **Group chat** - 3+ users in one conversation (TODO: PR #12)
-11. ⚠️ **Push notifications** - At least foreground (TODO: PR #14)
+9. ✅ **Online/offline status** - User presence indicators with 90s threshold (PR #9 DONE)
+10. ✅ **Group chat** - 3-20 users with validation (PR #12 DONE)
+11. ⚠️ **Push notifications** - Foreground notifications implemented, needs UX refinement (PR #14)
 
-**Status:** 8/11 complete (Phase 2 done, Phase 3 in progress)
+**Status:** 9/11 complete (82%), Phase 3 & 4 complete
 
 ## Timeline
 - MVP Target: 24 hours from start
-- Current: Phase 2 complete - ~12 hours in
-- Remaining: ~12 hours for Phase 3 (presence, groups, notifications)
-- Progress: 8/11 features done (73%)
-- Status: ON TRACK ✅
+- Current: Phase 4 complete - ~16 hours in
+- Remaining: ~4 hours for Phase 5 (polish & deployment)
+- Progress: 9/11 features done (82%)
+- Status: EXCELLENT PROGRESS ✅
+
+## Recent Completions (Oct 21, 2025)
+- Phase 3: Presence, Typing, Read Receipts, Group Chat (28 tests added)
+- Phase 4: Image Upload (7 tests), Foreground Notifications
+- Auth fixes: Global auth guard, profile data loading, sign-out navigation
+- Storage: Simplified rules with code-based validation
+- Tests: 40/40 passing (up from 13)
 

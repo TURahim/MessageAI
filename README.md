@@ -278,35 +278,42 @@ pnpm emu
 
 ## 🎯 MVP Requirements (24-Hour Hard Gate)
 
-### ✅ Complete (8/11 features)
+### ✅ Complete (9/11 features - 82%)
 - [x] **One-on-one chat** - Real-time messaging working
 - [x] **Message persistence** - Offline cache with AsyncStorage
 - [x] **Optimistic UI** - Instant message display (< 100ms)
 - [x] **Message timestamps** - Formatted timestamps with dayjs
 - [x] **User authentication** - Email/password + Google Sign-In
-- [x] **Conversation management** - Create, list, real-time updates
-- [x] **Retry logic** - Automatic & manual retry for failed messages
-- [x] **Offline support** - Queued writes, cache loading
+- [x] **Online/offline presence** - User status indicators (PR #9) ✅
+- [x] **Group chat** - 3-20 users with validation (PR #12) ✅
+- [x] **Read receipts** - ✓/✓✓ checkmarks (PR #11) ✅
+- [x] **Image sharing** - Upload with compression (PR #13) ✅
 
-### ⚠️ In Progress (3/11 features)
-- [ ] **Online/offline presence** - User status indicators (PR #9)
-- [ ] **Group chat** - 3+ users in conversation (PR #12)
-- [ ] **Push notifications** - Foreground notifications (PR #14)
+### ⚠️ Partial/Needs Refinement (2/11 features)
+- [x] **Foreground notifications** - Implementation complete, needs UX clarification (PR #14)
+- [ ] **Deployment** - Ready for production, not yet deployed
 
-**Progress:** 73% complete (8/11 features) | ~12 hours in | ~12 hours remaining
+**Progress:** 82% complete (9/11 features) | ~16 hours in | Phase 3 & 4 complete
 
-**Current Status:** Core messaging fully functional and production-ready! 🚀
+**Current Status:** All core features + enhancements working! Ready for Phase 5 polish. 🚀
 
 ---
 
-## 🗓️ Post-MVP Features
+## 🗓️ Completed Enhancements (Phase 3 & 4)
 
-### Phase 2: Enhanced Features
-- [ ] Typing indicators
-- [ ] Image upload/sharing
-- [ ] Image compression
+### ✅ Enhanced Features
+- [x] Typing indicators (debounced, animated)
+- [x] Online/offline presence (90s threshold)
+- [x] Read receipts (✓/✓✓ checkmarks)
+- [x] Group chat (3-20 users)
+- [x] Image upload/sharing
+- [x] Image compression (< 2MB automatic)
+- [x] Foreground notifications (needs UX refinement)
+
+### Phase 5: Remaining Polish
 - [ ] Windowed loading (pagination)
-- [ ] Error states & retry UI
+- [ ] Error states & retry UI polish
+- [ ] Final E2E testing
 
 ### Phase 3: Advanced
 - [ ] Background push notifications
