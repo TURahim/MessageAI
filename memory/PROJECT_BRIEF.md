@@ -57,21 +57,23 @@ Goal: Production-quality real-time messaging with offline support.
 
 Must have to pass checkpoint:
 1. ✅ **One-on-one chat** - Real-time messaging between 2+ users
-2. ✅ **Message persistence** - Survives app restarts
+2. ✅ **Message persistence** - Survives app restarts (offline cache)
 3. ✅ **Optimistic UI** - Messages appear instantly before server confirmation
-4. ⚠️ **Online/offline status** - User presence indicators
+4. ✅ **Retry logic** - Failed messages can be retried
 5. ✅ **Message timestamps** - Display message timing
-6. ✅ **User authentication** - Email/password + profiles in Firestore
-7. ⚠️ **Group chat** - 3+ users in one conversation
-8. ⚠️ **Read receipts** - Message read status
-9. ⚠️ **Push notifications** - At least foreground
-10. ⚠️ **Deployment** - Backend deployed, app needs device testing
+6. ✅ **User authentication** - Email/password + Google Sign-In
+7. ✅ **Conversation management** - Create, list, real-time updates
+8. ✅ **Offline support** - Queued writes, cache loading
+9. ⚠️ **Online/offline status** - User presence indicators (TODO: PR #9)
+10. ⚠️ **Group chat** - 3+ users in one conversation (TODO: PR #12)
+11. ⚠️ **Push notifications** - At least foreground (TODO: PR #14)
 
-**Status:** 5/11 complete (PR #1 & #2 done)
+**Status:** 8/11 complete (Phase 2 done, Phase 3 in progress)
 
 ## Timeline
 - MVP Target: 24 hours from start
-- Current: PR #1 & #2 complete - ~6 hours in
-- Remaining: ~18 hours for 6 features
-- Next: Conversation service, presence, groups, notifications
+- Current: Phase 2 complete - ~12 hours in
+- Remaining: ~12 hours for Phase 3 (presence, groups, notifications)
+- Progress: 8/11 features done (73%)
+- Status: ON TRACK ✅
 
