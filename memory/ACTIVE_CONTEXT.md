@@ -1,5 +1,13 @@
 # Active Context
 
+> **🚀 FOR NEW LLM CHATS - READ THESE FIRST:**  
+> - `QUICK-REFERENCE.md` - Complete code/architecture reference (750 lines)
+> - `UI-UX-REFERENCE.md` - Design system & components (750 lines)
+> - `MVP-SUBMISSION-SUMMARY.md` - Project overview (600 lines)
+> - `MANUAL-TEST-CHECKLIST.md` - Testing procedures (343 lines)
+> 
+> These guides provide instant context for any development task.
+
 ## Current Milestone: MVP COMPLETE ✅ - Phase 5 Done
 All 11 MVP features implemented. Testing framework complete. Ready for manual E2E testing.
 All PRs #1-17 complete. Production-ready codebase committed to main + mvp_submission branch.

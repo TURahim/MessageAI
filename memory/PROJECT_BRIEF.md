@@ -1,5 +1,11 @@
 # MessageAI - Project Brief
 
+> **📚 QUICK START FOR NEW CHATS:**  
+> 1. Read `QUICK-REFERENCE.md` first (750 lines - code/architecture)
+> 2. Read `UI-UX-REFERENCE.md` for design system (750 lines - visual/UX)
+> 3. Check `MVP-SUBMISSION-SUMMARY.md` for complete overview (600 lines)
+> 4. Use `MANUAL-TEST-CHECKLIST.md` for testing procedures (343 lines)
+
 ## Overview
 WhatsApp-style messaging app built with React Native + Expo + Firebase.
 Goal: Production-quality real-time messaging with offline support.

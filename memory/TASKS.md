@@ -1,5 +1,13 @@
 # Tasks
 
+> **📖 QUICK REFERENCE GUIDES (Read First in New Chats):**
+> 1. `QUICK-REFERENCE.md` - Code architecture, hooks, services, data flow
+> 2. `UI-UX-REFERENCE.md` - Components, design system, visual patterns
+> 3. `MVP-SUBMISSION-SUMMARY.md` - Complete project overview
+> 4. `MANUAL-TEST-CHECKLIST.md` - Testing procedures
+>
+> **These provide instant context for continuing work.**
+
 ## Current Status: MVP COMPLETE ✅ - Ready for Manual Testing
 
 All development tasks complete. Awaiting manual E2E testing before deployment.
