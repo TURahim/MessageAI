@@ -65,7 +65,7 @@ MessageAI/
 └── README.md                     # ✅ EXISTS
 ```
 
-**Current Status:** Phase 3 COMPLETE ✅ - 33/33 tests passing, all enhanced features implemented
+**Current Status:** Phase 3 & PR #13 COMPLETE ✅ - 40/40 tests passing, all enhanced features + image upload implemented
 
 ---
 
@@ -1022,6 +1022,17 @@ describe('imageCompression', () => {
 ```
 
 **Commit:** `feat: implement image upload with compression tests`
+
+**Implementation Notes:**
+- Used expo-file-system/legacy for compatibility with Expo SDK 54
+- Simplified storage rules to auth-only (participant validation in code)
+- Added guards: auth check, conversation exists, participant verification
+- Two-stage compression: 80% quality, then 60% if still > 2MB
+- Upload-then-send pattern with progress tracking
+- Full-size image modal with tap-to-view
+- 7 new tests added (compression, file size checking)
+
+**Test Results:** 40/40 tests passing ✅
 
 ---
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet, KeyboardAvoidingView, Platform } from "react-native";
+import { View, Text, StyleSheet, KeyboardAvoidingView, Platform, Alert } from "react-native";
 import { FlashList } from "@shopify/flash-list";
 import { useLocalSearchParams, useNavigation } from "expo-router";
 import { newMessageId } from "@/utils/messageId";
@@ -18,9 +18,11 @@ import MessageInput from "@/components/MessageInput";
 import ConnectionBanner from "@/components/ConnectionBanner";
 import OnlineIndicator from "@/components/OnlineIndicator";
 import TypingIndicator from "@/components/TypingIndicator";
+import ImageUploadProgress from "@/components/ImageUploadProgress";
 import { usePresence } from "@/hooks/usePresence";
 import { useTypingIndicator } from "@/hooks/useTypingIndicator";
 import { useMarkAsRead } from "@/hooks/useMarkAsRead";
+import { uploadImage } from "@/services/mediaService";
 import { Conversation } from "@/types/index";
 
 export default function ChatRoomScreen() {
@@ -28,6 +30,7 @@ export default function ChatRoomScreen() {
   const navigation = useNavigation();
   const [messages, setMessages] = useState<Message[]>([]);
   const [conversation, setConversation] = useState<Conversation | null>(null);
+  const [uploadingImages, setUploadingImages] = useState<Map<string, number>>(new Map()); // messageId -> progress
   
   const conversationId = id || "demo-conversation-1";
   const currentUserId = auth.currentUser?.uid || "anonymous";
@@ -144,6 +147,95 @@ export default function ChatRoomScreen() {
     }
   };
 
+  const handleSendImage = async (imageUri: string) => {
+    const messageId = newMessageId();
+    
+    console.log('🖼️ Sending image message:', messageId.substring(0, 8));
+
+    // Create optimistic image message
+    const newMessage: Message = {
+      id: messageId,
+      conversationId,
+      senderId: currentUserId,
+      type: "image",
+      text: "", // Can add caption support later
+      media: {
+        status: "uploading",
+        url: imageUri, // Temporary local URI
+        width: 0,
+        height: 0,
+      },
+      clientTimestamp: Timestamp.now(),
+      serverTimestamp: null,
+      status: "sending",
+      retryCount: 0,
+      readBy: [currentUserId],
+      readCount: 1,
+    };
+
+    // Add to UI optimistically
+    setMessages((prev) => [...prev, newMessage]);
+    setUploadingImages(new Map(uploadingImages.set(messageId, 0)));
+
+    try {
+      // Upload image to Storage
+      const uploadResult = await uploadImage(
+        imageUri,
+        conversationId,
+        messageId,
+        (progress) => {
+          setUploadingImages(new Map(uploadingImages.set(messageId, progress.progress)));
+        }
+      );
+
+      console.log('✅ Image uploaded successfully');
+
+      // Update message with upload result
+      const messageWithImage: Message = {
+        ...newMessage,
+        media: {
+          status: "ready",
+          url: uploadResult.url,
+          width: uploadResult.width,
+          height: uploadResult.height,
+        },
+      };
+
+      // Update local state
+      setMessages((prev) =>
+        prev.map((m) => (m.id === messageId ? messageWithImage : m))
+      );
+
+      // Send to Firestore
+      const result = await sendMessageWithRetry(conversationId, messageWithImage);
+
+      // Clean up upload progress
+      const newMap = new Map(uploadingImages);
+      newMap.delete(messageId);
+      setUploadingImages(newMap);
+
+      if (!result.success && !result.isOffline) {
+        // Mark as failed
+        setMessages((prev) =>
+          prev.map((m) => (m.id === messageId ? { ...m, status: "failed" as const } : m))
+        );
+      }
+    } catch (error: any) {
+      console.error('❌ Image upload/send failed:', error);
+      Alert.alert('Upload Failed', error.message || 'Failed to upload image. Please try again.');
+
+      // Mark as failed
+      setMessages((prev) =>
+        prev.map((m) => (m.id === messageId ? { ...m, status: "failed" as const, media: { ...m.media!, status: "failed" } } : m))
+      );
+
+      // Clean up upload progress
+      const newMap = new Map(uploadingImages);
+      newMap.delete(messageId);
+      setUploadingImages(newMap);
+    }
+  };
+
   const handleRetry = async (messageId: string) => {
     // Find the failed message
     const failedMessage = messages.find(m => m.id === messageId);
@@ -197,12 +289,19 @@ export default function ChatRoomScreen() {
         viewabilityConfig={viewabilityConfig}
       />
 
+      {/* Show upload progress */}
+      {Array.from(uploadingImages.entries()).map(([messageId, progress]) => (
+        <ImageUploadProgress key={messageId} progress={progress} />
+      ))}
+
       <TypingIndicator conversationId={conversationId} currentUserId={currentUserId} />
 
       <MessageInput 
-        onSend={handleSend} 
+        onSend={handleSend}
+        onSendImage={handleSendImage}
         onTyping={startTyping}
         onStopTyping={stopTyping}
+        disabled={uploadingImages.size > 0}
       />
     </KeyboardAvoidingView>
   );

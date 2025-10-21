@@ -17,7 +17,7 @@ module.exports = {
     '^.+\\.(js|jsx|ts|tsx)$': 'babel-jest',
   },
   transformIgnorePatterns: [
-    'node_modules/(?!(react-native|@react-native|@react-native-community|expo-router|expo-auth-session|expo-web-browser|expo-crypto|expo-constants|expo|@firebase|uuid)/)',
+    'node_modules/(?!(react-native|@react-native|@react-native-community|expo-router|expo-auth-session|expo-web-browser|expo-crypto|expo-constants|expo-image-picker|expo-image-manipulator|expo-file-system|expo|@firebase|uuid)/)',
   ],
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json'],
   moduleNameMapper: {

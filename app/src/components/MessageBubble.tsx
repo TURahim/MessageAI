@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Message } from '@/types/index';
+import ImageMessage from './ImageMessage';
 import dayjs from 'dayjs';
 
 interface Props {
@@ -59,15 +60,39 @@ export default function MessageBubble({
     return '✓';
   };
 
+  // Determine if this is an image message
+  const isImageMessage = message.type === 'image' && message.media;
+
   return (
     <View style={[styles.container, isOwn ? styles.ownContainer : styles.otherContainer]}>
       <View style={[styles.bubble, isOwn ? styles.ownBubble : styles.otherBubble, message.status === 'failed' && styles.failedBubble]}>
         {showSenderName && !isOwn && (
           <Text style={styles.senderName}>{message.senderId}</Text>
         )}
-        <Text style={[styles.text, isOwn ? styles.ownText : styles.otherText]}>
-          {message.text}
-        </Text>
+        
+        {/* Image message */}
+        {isImageMessage ? (
+          <View style={styles.imageContainer}>
+            <ImageMessage
+              imageUrl={message.media!.url}
+              width={message.media!.width}
+              height={message.media!.height}
+              status={message.media!.status}
+            />
+            {/* Caption if present */}
+            {message.text && (
+              <Text style={[styles.text, isOwn ? styles.ownText : styles.otherText, styles.imageCaption]}>
+                {message.text}
+              </Text>
+            )}
+          </View>
+        ) : (
+          /* Text message */
+          <Text style={[styles.text, isOwn ? styles.ownText : styles.otherText]}>
+            {message.text}
+          </Text>
+        )}
+        
         <View style={styles.footer}>
           <Text style={[styles.timestamp, isOwn ? styles.ownTimestamp : styles.otherTimestamp]}>
             {getTimestamp()}
@@ -167,6 +192,12 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 12,
     fontWeight: '600',
+  },
+  imageContainer: {
+    maxWidth: '100%',
+  },
+  imageCaption: {
+    marginTop: 8,
   },
 });
 

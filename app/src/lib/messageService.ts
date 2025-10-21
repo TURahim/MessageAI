@@ -232,6 +232,7 @@ export function subscribeToMessages(
           senderId: data.senderId,
           type: data.type || "text",
           text: data.text || "",
+          media: data.media || undefined,
           clientTimestamp: data.clientTimestamp,
           serverTimestamp: data.serverTimestamp || null,
           status: data.status || "sent",
