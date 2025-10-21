@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { usePresence } from '@/hooks/usePresence';
 import { useAuth } from '@/hooks/useAuth';
+import { requestNotificationPermissions, setupNotificationTapHandler } from '@/services/notificationService';
 
 function AppContent() {
   const { user, loading } = useAuth();
@@ -12,6 +13,24 @@ function AppContent() {
   // Initialize presence tracking ONLY when user is authenticated
   // Pass undefined to skip when user is null (prevents permission errors)
   usePresence(user ? null : undefined);
+
+  // Setup notifications when user is authenticated
+  useEffect(() => {
+    if (user) {
+      // Request permissions and setup tap handler
+      const setupNotifications = async () => {
+        const granted = await requestNotificationPermissions();
+        if (granted) {
+          setupNotificationTapHandler();
+          console.log('✅ Notifications initialized');
+        } else {
+          console.warn('⚠️ Notification permissions denied by user');
+        }
+      };
+
+      setupNotifications();
+    }
+  }, [user]);
 
   // Global auth guard: redirect based on auth state from anywhere in the app
   useEffect(() => {

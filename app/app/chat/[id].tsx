@@ -23,6 +23,7 @@ import { usePresence } from "@/hooks/usePresence";
 import { useTypingIndicator } from "@/hooks/useTypingIndicator";
 import { useMarkAsRead } from "@/hooks/useMarkAsRead";
 import { uploadImage } from "@/services/mediaService";
+import { showMessageNotification } from "@/services/notificationService";
 import { Conversation } from "@/types/index";
 
 export default function ChatRoomScreen() {
@@ -89,9 +90,40 @@ export default function ChatRoomScreen() {
 
   // Real-time listener for messages
   useEffect(() => {
+    let previousMessageIds = new Set<string>();
+
     const unsubscribe = subscribeToMessages(
       conversationId,
-      (newMessages) => {
+      async (newMessages) => {
+        // Detect truly new messages (not from cache or initial load)
+        const newMessageIds = new Set(newMessages.map(m => m.id));
+        const addedMessages = newMessages.filter(
+          m => !previousMessageIds.has(m.id) && m.senderId !== currentUserId
+        );
+
+        // Show notifications for new messages from others
+        if (addedMessages.length > 0) {
+          for (const message of addedMessages) {
+            // Get sender name from Firestore
+            try {
+              const senderDoc = await getDoc(doc(db, 'users', message.senderId));
+              const senderName = senderDoc.exists() 
+                ? senderDoc.data().displayName || 'Someone'
+                : 'Someone';
+
+              await showMessageNotification(
+                conversationId,
+                senderName,
+                message.text,
+                message.type
+              );
+            } catch (error) {
+              console.warn('Failed to show notification:', error);
+            }
+          }
+        }
+
+        previousMessageIds = newMessageIds;
         setMessages(newMessages);
       },
       (error) => {
