@@ -80,7 +80,7 @@ export async function sendMessageWithRetry(
   conversationId: string,
   message: Omit<Message, "serverTimestamp">,
   maxRetries: number = 3
-): Promise<number> {
+): Promise<{ success: boolean; retryCount: number; isOffline: boolean }> {
   let retryCount = 0;
 
   while (retryCount < maxRetries) {
@@ -90,21 +90,39 @@ export async function sendMessageWithRetry(
       const docSnap = await getDoc(messageRef);
       
       if (docSnap.exists() && docSnap.data().serverTimestamp) {
-        console.log(`✅ Message ${message.id} already sent (server ack), stopping retry`);
-        return retryCount;
+        console.log(`✅ Message ${message.id.substring(0, 8)} already sent (server ack), stopping retry`);
+        return { success: true, retryCount, isOffline: false };
       }
 
       // Attempt to send
       await sendMessage(conversationId, message);
       console.log(`✅ Message sent successfully on attempt ${retryCount + 1}`);
-      return retryCount;
+      return { success: true, retryCount, isOffline: false };
     } catch (error: any) {
       retryCount++;
-      console.warn(`⚠️ Send attempt ${retryCount} failed:`, error.message);
+      const errorCode = error.code || '';
+      const errorMessage = error.message || '';
+
+      // Check if this is an offline error
+      const isOfflineError = 
+        errorCode === 'unavailable' || 
+        errorCode === 'failed-precondition' ||
+        errorMessage.includes('client is offline') ||
+        errorMessage.includes('Failed to get document');
+
+      if (isOfflineError) {
+        console.log(`📦 Offline detected on attempt ${retryCount} - message will be queued`);
+        
+        // If offline, don't continue retrying - let Firestore queue it
+        return { success: false, retryCount, isOffline: true };
+      }
+
+      // For other errors, log and continue retrying
+      console.warn(`⚠️ Send attempt ${retryCount} failed:`, errorMessage);
 
       if (retryCount >= maxRetries) {
-        console.error(`❌ Max retries (${maxRetries}) reached for message ${message.id}`);
-        throw error;
+        console.error(`❌ Max retries (${maxRetries}) reached for message ${message.id.substring(0, 8)}`);
+        return { success: false, retryCount, isOffline: false };
       }
 
       // Exponential backoff: 1s, 2s, 4s
@@ -114,7 +132,7 @@ export async function sendMessageWithRetry(
     }
   }
 
-  return retryCount;
+  return { success: false, retryCount, isOffline: false };
 }
 
 /**

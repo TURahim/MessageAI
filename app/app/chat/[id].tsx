@@ -73,21 +73,25 @@ export default function ChatRoomScreen() {
     // Optimistic: Add to UI immediately
     setMessages((prev) => [...prev, newMessage]);
 
-    try {
-      const retries = await sendMessageWithRetry(conversationId, newMessage);
-      
-      // Update retry count in local state
-      if (retries > 0) {
+    const result = await sendMessageWithRetry(conversationId, newMessage);
+    
+    if (result.success) {
+      // Success - update retry count if needed
+      if (result.retryCount > 0) {
         setMessages((prev) =>
-          prev.map((m) => (m.id === messageId ? { ...m, retryCount: retries } : m))
+          prev.map((m) => (m.id === messageId ? { ...m, retryCount: result.retryCount } : m))
         );
       }
-    } catch (error) {
-      console.error("Failed to send message after retries:", error);
-
-      // Update status to failed
+    } else if (result.isOffline) {
+      // Offline - keep in sending state, Firestore will queue it
+      console.log('📦 Message queued for offline delivery');
+      // Don't change status - leave as "sending"
+      // Firestore will auto-send when back online
+    } else {
+      // Real error after retries - mark as failed
+      console.error("Failed to send message after retries");
       setMessages((prev) =>
-        prev.map((m) => (m.id === messageId ? { ...m, status: "failed" as const } : m))
+        prev.map((m) => (m.id === messageId ? { ...m, status: "failed" as const, retryCount: result.retryCount } : m))
       );
     }
   };
@@ -97,18 +101,23 @@ export default function ChatRoomScreen() {
     const failedMessage = messages.find(m => m.id === messageId);
     if (!failedMessage) return;
 
+    console.log(`🔄 Manual retry for message ${messageId.substring(0, 8)}`);
+
     // Update status to sending
     setMessages((prev) =>
       prev.map((m) => (m.id === messageId ? { ...m, status: "sending" as const } : m))
     );
 
-    try {
-      await sendMessageWithRetry(conversationId, failedMessage);
-      
-      // Success - status will be updated by real-time listener
-    } catch (error) {
-      console.error("Retry failed:", error);
-      
+    const result = await sendMessageWithRetry(conversationId, failedMessage);
+    
+    if (result.success) {
+      console.log('✅ Retry successful');
+      // Status will be updated by real-time listener
+    } else if (result.isOffline) {
+      console.log('📦 Still offline - message queued');
+      // Keep in sending state
+    } else {
+      console.error('❌ Retry failed after all attempts');
       // Back to failed status
       setMessages((prev) =>
         prev.map((m) => (m.id === messageId ? { ...m, status: "failed" as const } : m))
