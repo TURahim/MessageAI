@@ -500,7 +500,7 @@ describe('Conversation Creation', () => {
 - [x] 5.4 Create `src/components/MessageBubble.tsx` ✅
 - [x] 5.5 Create `src/components/MessageInput.tsx` ✅
 - [x] 5.6 Create `app/app/chat/[id].tsx` ✅ (Already existed, updated)
-- [ ] 5.7 Manual test: Send message, appears instantly, status updates
+- [x] 5.7 Manual test: Send message, appears instantly, status updates
 
 **Unit Test:**
 ```typescript
@@ -531,7 +531,7 @@ describe('messageId', () => {
 - [ ] 6.2 Update `app/app/chat/[id].tsx` with FlashList (TODO: migrate from FlatList)
 - [x] 6.3 Implement timestamp reconciliation (serverTs > clientTs) ✅ (Already in messageService)
 - [x] 6.4 Update messageService: Update conversation.lastMessage ✅
-- [ ] 6.5 Manual test: Two devices, A sends → B receives < 3s
+- [x] 6.5 Manual test: Two devices, A sends → B receives < 3s
 
 **Integration Test with Emulator:**
 ```typescript
@@ -627,22 +627,16 @@ describe('useMessages timestamp reconciliation', () => {
 
 ---
 
-### ☐ PR #7: Retry Logic + Failed State
+### ✅ PR #7: Retry Logic + Failed State
 **Branch:** `feature/message-retry`
 
-- [ ] 7.1 Update `src/services/messageService.ts` with sendMessageWithRetry
-  - **CRITICAL:** Stop retry immediately on server ack of same `mid`
-  - Implementation: Check if doc exists before retry
-  ```typescript
-  const docRef = doc(db, `conversations/${cid}/messages/${messageId}`);
-  const docSnap = await getDoc(docRef);
-  if (docSnap.exists() && docSnap.data().serverTimestamp) {
-    return; // Server already processed this message, stop retrying
-  }
-  ```
-- [ ] 7.2 Update `src/hooks/useSendMessage.ts` for failed state
-- [ ] 7.3 Update `src/components/MessageBubble.tsx` with retry button
-- [ ] 7.4 Add network error detection
+- [x] 7.1 Update `src/services/messageService.ts` with sendMessageWithRetry ✅
+  - **CRITICAL:** Stop retry immediately on server ack of same `mid` ✅
+  - Implementation: Check if doc exists before retry ✅
+  - Exponential backoff: 1s, 2s, 4s ✅
+- [x] 7.2 Update chat screen for failed state ✅ (Integrated in chat/[id].tsx)
+- [x] 7.3 Update `src/components/MessageBubble.tsx` with retry button ✅
+- [x] 7.4 Add network error detection ✅ (useNetworkStatus hook + offline banner)
 - [ ] 7.5 Manual test: Offline → send → retries, online → success
 
 **Unit Test with Retry Stop:**

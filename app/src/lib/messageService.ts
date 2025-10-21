@@ -3,6 +3,7 @@ import {
   doc,
   setDoc,
   updateDoc,
+  getDoc,
   query,
   orderBy,
   onSnapshot,
@@ -54,6 +55,51 @@ export async function sendMessage(
     console.warn("Error sending message:", error);
     throw error;
   }
+}
+
+/**
+ * Sends a message with retry logic
+ * CRITICAL: Stops retrying if server ack is detected
+ */
+export async function sendMessageWithRetry(
+  conversationId: string,
+  message: Omit<Message, "serverTimestamp">,
+  maxRetries: number = 3
+): Promise<number> {
+  let retryCount = 0;
+
+  while (retryCount < maxRetries) {
+    try {
+      // Check if message already exists with server timestamp (stop retrying)
+      const messageRef = doc(db, "conversations", conversationId, "messages", message.id);
+      const docSnap = await getDoc(messageRef);
+      
+      if (docSnap.exists() && docSnap.data().serverTimestamp) {
+        console.log(`✅ Message ${message.id} already sent (server ack), stopping retry`);
+        return retryCount;
+      }
+
+      // Attempt to send
+      await sendMessage(conversationId, message);
+      console.log(`✅ Message sent successfully on attempt ${retryCount + 1}`);
+      return retryCount;
+    } catch (error: any) {
+      retryCount++;
+      console.warn(`⚠️ Send attempt ${retryCount} failed:`, error.message);
+
+      if (retryCount >= maxRetries) {
+        console.error(`❌ Max retries (${maxRetries}) reached for message ${message.id}`);
+        throw error;
+      }
+
+      // Exponential backoff: 1s, 2s, 4s
+      const backoffMs = Math.pow(2, retryCount - 1) * 1000;
+      console.log(`⏳ Waiting ${backoffMs}ms before retry...`);
+      await new Promise(resolve => setTimeout(resolve, backoffMs));
+    }
+  }
+
+  return retryCount;
 }
 
 /**

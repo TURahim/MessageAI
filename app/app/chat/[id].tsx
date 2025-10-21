@@ -1,21 +1,26 @@
 import React, { useEffect, useState } from "react";
-import { View, FlatList, StyleSheet, KeyboardAvoidingView, Platform } from "react-native";
+import { View, Text, StyleSheet, KeyboardAvoidingView, Platform } from "react-native";
+import { FlashList } from "@shopify/flash-list";
 import { useLocalSearchParams } from "expo-router";
 import { newMessageId } from "@/utils/messageId";
 import { Message } from "@/types/message";
 import {
   sendMessage,
+  sendMessageWithRetry,
   subscribeToMessages,
   markMessagesAsRead,
+  updateMessageStatus,
 } from "@/lib/messageService";
 import { auth } from "@/lib/firebase";
 import { Timestamp } from "firebase/firestore";
 import MessageBubble from "@/components/MessageBubble";
 import MessageInput from "@/components/MessageInput";
+import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 
 export default function ChatRoomScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [messages, setMessages] = useState<Message[]>([]);
+  const { isOnline } = useNetworkStatus();
   
   const conversationId = id || "demo-conversation-1";
   const currentUserId = auth.currentUser?.uid || "anonymous";
@@ -70,11 +75,42 @@ export default function ChatRoomScreen() {
     setMessages((prev) => [...prev, newMessage]);
 
     try {
-      await sendMessage(conversationId, newMessage);
+      const retries = await sendMessageWithRetry(conversationId, newMessage);
+      
+      // Update retry count in local state
+      if (retries > 0) {
+        setMessages((prev) =>
+          prev.map((m) => (m.id === messageId ? { ...m, retryCount: retries } : m))
+        );
+      }
     } catch (error) {
-      console.error("Failed to send message:", error);
+      console.error("Failed to send message after retries:", error);
 
       // Update status to failed
+      setMessages((prev) =>
+        prev.map((m) => (m.id === messageId ? { ...m, status: "failed" as const } : m))
+      );
+    }
+  };
+
+  const handleRetry = async (messageId: string) => {
+    // Find the failed message
+    const failedMessage = messages.find(m => m.id === messageId);
+    if (!failedMessage) return;
+
+    // Update status to sending
+    setMessages((prev) =>
+      prev.map((m) => (m.id === messageId ? { ...m, status: "sending" as const } : m))
+    );
+
+    try {
+      await sendMessageWithRetry(conversationId, failedMessage);
+      
+      // Success - status will be updated by real-time listener
+    } catch (error) {
+      console.error("Retry failed:", error);
+      
+      // Back to failed status
       setMessages((prev) =>
         prev.map((m) => (m.id === messageId ? { ...m, status: "failed" as const } : m))
       );
@@ -87,17 +123,23 @@ export default function ChatRoomScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={90}
     >
-      <FlatList
+      {/* Offline Banner */}
+      {!isOnline && (
+        <View style={styles.offlineBanner}>
+          <Text style={styles.offlineText}>📡 No internet connection</Text>
+        </View>
+      )}
+
+      <FlashList
         data={messages}
-        keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
           <MessageBubble
             message={item}
             isOwn={item.senderId === currentUserId}
             showSenderName={false}
+            onRetry={handleRetry}
           />
         )}
-        contentContainerStyle={styles.messageList}
       />
 
       <MessageInput onSend={handleSend} />
@@ -109,6 +151,17 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#f5f5f5",
+  },
+  offlineBanner: {
+    backgroundColor: '#ff9800',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+  },
+  offlineText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
   messageList: {
     paddingVertical: 10,
