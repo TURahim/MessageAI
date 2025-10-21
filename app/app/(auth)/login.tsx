@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { router } from 'expo-router';
 import { signInWithEmail, signInWithGoogle, useGoogleAuth } from '@/services/authService';
+import ErrorBanner from '@/components/ErrorBanner';
+import { getFirebaseErrorMessage } from '@/utils/errorMessages';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   
   const { request, response, promptAsync } = useGoogleAuth();
 
@@ -18,28 +21,32 @@ export default function LoginScreen() {
 
   const handleLogin = async () => {
     if (!email || !password) {
-      Alert.alert('Error', 'Please fill in all fields');
+      setError('Please fill in all fields');
       return;
     }
 
+    setError(null);
     setLoading(true);
     try {
       await signInWithEmail(email, password);
       router.replace('/(tabs)');
-    } catch (error: any) {
-      Alert.alert('Login Failed', error.message);
+    } catch (err: any) {
+      const friendlyError = getFirebaseErrorMessage(err);
+      setError(friendlyError.message);
     } finally {
       setLoading(false);
     }
   };
 
   const handleGoogleSignIn = async (idToken: string) => {
+    setError(null);
     setLoading(true);
     try {
       await signInWithGoogle(idToken);
       router.replace('/(tabs)');
-    } catch (error: any) {
-      Alert.alert('Google Sign-In Failed', error.message);
+    } catch (err: any) {
+      const friendlyError = getFirebaseErrorMessage(err);
+      setError(friendlyError.message);
     } finally {
       setLoading(false);
     }
@@ -47,18 +54,16 @@ export default function LoginScreen() {
 
   const handleGooglePress = async () => {
     if (!request) {
-      Alert.alert(
-        'Google Sign-In Not Configured',
-        'Google OAuth client IDs are not set up. Please add them to your .env file or use email/password login.',
-        [{ text: 'OK' }]
-      );
+      setError('Google Sign-In is not configured. Please use email/password login.');
       return;
     }
 
     try {
+      setError(null);
       await promptAsync();
-    } catch (error: any) {
-      Alert.alert('Error', error.message);
+    } catch (err: any) {
+      const friendlyError = getFirebaseErrorMessage(err);
+      setError(friendlyError.message);
     }
   };
 
@@ -74,6 +79,14 @@ export default function LoginScreen() {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>MessageAI</Text>
+      
+      {error && (
+        <ErrorBanner 
+          message={error} 
+          onDismiss={() => setError(null)}
+          type="error"
+        />
+      )}
       
       <TextInput
         style={styles.input}

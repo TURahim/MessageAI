@@ -25,6 +25,8 @@ Notifications.setNotificationHandler({
       shouldShowAlert: !shouldSuppress,
       shouldPlaySound: !shouldSuppress,
       shouldSetBadge: false,
+      shouldShowBanner: !shouldSuppress,
+      shouldShowList: !shouldSuppress,
     };
   },
 });

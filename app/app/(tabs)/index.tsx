@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator, Modal } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, Modal } from 'react-native';
 import { router } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
 import { useConversations } from '@/hooks/useConversations';
 import ConversationListItem from '@/components/ConversationListItem';
+import EmptyState from '@/components/EmptyState';
+import { SkeletonConversationList } from '@/components/SkeletonLoader';
 
 export default function ChatsScreen() {
   const { user } = useAuth();
@@ -12,26 +14,22 @@ export default function ChatsScreen() {
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#007AFF" />
+      <View style={styles.container}>
+        <SkeletonConversationList count={8} />
       </View>
     );
   }
 
   if (conversations.length === 0) {
     return (
-      <View style={styles.emptyContainer}>
-        <Text style={styles.emptyText}>No conversations yet</Text>
-        <Text style={styles.subText}>
-          Welcome, {user?.displayName}! Start a new conversation to get started.
-        </Text>
-        
-        <TouchableOpacity 
-          style={styles.newChatButton}
-          onPress={() => router.push('/users')}
-        >
-          <Text style={styles.newChatButtonText}>+ New Conversation</Text>
-        </TouchableOpacity>
+      <View style={styles.container}>
+        <EmptyState
+          icon="💬"
+          title="No conversations yet"
+          subtitle={`Welcome, ${user?.displayName || 'there'}! Start a new conversation to get started.`}
+          actionLabel="New Conversation"
+          onAction={() => router.push('/users')}
+        />
       </View>
     );
   }

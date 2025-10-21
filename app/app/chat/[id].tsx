@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet, KeyboardAvoidingView, Platform, Alert } from "react-native";
+import { View, Text, StyleSheet, KeyboardAvoidingView, Platform, Alert, TouchableOpacity } from "react-native";
 import { FlashList } from "@shopify/flash-list";
 import { useLocalSearchParams, useNavigation } from "expo-router";
 import { newMessageId } from "@/utils/messageId";
@@ -19,9 +19,11 @@ import ConnectionBanner from "@/components/ConnectionBanner";
 import OnlineIndicator from "@/components/OnlineIndicator";
 import TypingIndicator from "@/components/TypingIndicator";
 import ImageUploadProgress from "@/components/ImageUploadProgress";
+import LoadingSpinner from "@/components/LoadingSpinner";
 import { usePresence } from "@/hooks/usePresence";
 import { useTypingIndicator } from "@/hooks/useTypingIndicator";
 import { useMarkAsRead } from "@/hooks/useMarkAsRead";
+import { useMessages } from "@/hooks/useMessages";
 import { uploadImage } from "@/services/mediaService";
 import { showMessageNotification } from "@/services/notificationService";
 import { Conversation } from "@/types/index";
@@ -29,7 +31,6 @@ import { Conversation } from "@/types/index";
 export default function ChatRoomScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const navigation = useNavigation();
-  const [messages, setMessages] = useState<Message[]>([]);
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [uploadingImages, setUploadingImages] = useState<Map<string, number>>(new Map()); // messageId -> progress
   
@@ -44,6 +45,9 @@ export default function ChatRoomScreen() {
 
   // Track read receipts
   const { onViewableItemsChanged, viewabilityConfig } = useMarkAsRead(conversationId, currentUserId);
+
+  // Load messages with pagination
+  const { messages, loading, hasMore, loadMore, loadingMore } = useMessages(conversationId, currentUserId);
 
   // Fetch conversation details
   useEffect(() => {
@@ -88,52 +92,42 @@ export default function ChatRoomScreen() {
     }
   }, [conversation, currentUserId, navigation]);
 
-  // Real-time listener for messages
+  // Trigger notifications for new messages (uses messages from useMessages hook)
   useEffect(() => {
     let previousMessageIds = new Set<string>();
 
-    const unsubscribe = subscribeToMessages(
-      conversationId,
-      async (newMessages) => {
-        // Detect truly new messages (not from cache or initial load)
-        const newMessageIds = new Set(newMessages.map(m => m.id));
-        const addedMessages = newMessages.filter(
-          m => !previousMessageIds.has(m.id) && m.senderId !== currentUserId
-        );
+    const checkNewMessages = async () => {
+      const newMessageIds = new Set(messages.map(m => m.id));
+      const addedMessages = messages.filter(
+        m => !previousMessageIds.has(m.id) && m.senderId !== currentUserId
+      );
 
-        // Show notifications for new messages from others
-        if (addedMessages.length > 0) {
-          for (const message of addedMessages) {
-            // Get sender name from Firestore
-            try {
-              const senderDoc = await getDoc(doc(db, 'users', message.senderId));
-              const senderName = senderDoc.exists() 
-                ? senderDoc.data().displayName || 'Someone'
-                : 'Someone';
+      // Show notifications for new messages from others
+      if (addedMessages.length > 0 && previousMessageIds.size > 0) {
+        for (const message of addedMessages) {
+          try {
+            const senderDoc = await getDoc(doc(db, 'users', message.senderId));
+            const senderName = senderDoc.exists() 
+              ? senderDoc.data().displayName || 'Someone'
+              : 'Someone';
 
-              await showMessageNotification(
-                conversationId,
-                senderName,
-                message.text,
-                message.type
-              );
-            } catch (error) {
-              console.warn('Failed to show notification:', error);
-            }
+            await showMessageNotification(
+              conversationId,
+              senderName,
+              message.text,
+              message.type
+            );
+          } catch (error) {
+            console.warn('Failed to show notification:', error);
           }
         }
-
-        previousMessageIds = newMessageIds;
-        setMessages(newMessages);
-      },
-      (error) => {
-        console.error("Error subscribing to messages:", error);
       }
-    );
 
-    // Cleanup subscription on unmount
-    return () => unsubscribe();
-  }, [conversationId, currentUserId]);
+      previousMessageIds = newMessageIds;
+    };
+
+    checkNewMessages();
+  }, [messages, conversationId, currentUserId]);
 
   const handleSend = async (text: string) => {
     if (!text.trim()) return;
@@ -154,29 +148,11 @@ export default function ChatRoomScreen() {
     };
 
     // Optimistic: Add to UI immediately
-    setMessages((prev) => [...prev, newMessage]);
+    // Note: With pagination, we manage messages in useMessages hook
+    // The real-time listener will pick up our optimistic message
 
-    const result = await sendMessageWithRetry(conversationId, newMessage);
-    
-    if (result.success) {
-      // Success - update retry count if needed
-      if (result.retryCount > 0) {
-        setMessages((prev) =>
-          prev.map((m) => (m.id === messageId ? { ...m, retryCount: result.retryCount } : m))
-        );
-      }
-    } else if (result.isOffline) {
-      // Offline - keep in sending state, Firestore will queue it
-      console.log('📦 Message queued for offline delivery');
-      // Don't change status - leave as "sending"
-      // Firestore will auto-send when back online
-    } else {
-      // Real error after retries - mark as failed
-      console.error("Failed to send message after retries");
-      setMessages((prev) =>
-        prev.map((m) => (m.id === messageId ? { ...m, status: "failed" as const, retryCount: result.retryCount } : m))
-      );
-    }
+    await sendMessageWithRetry(conversationId, newMessage);
+    // Real-time listener will update the message status
   };
 
   const handleSendImage = async (imageUri: string) => {
@@ -205,8 +181,7 @@ export default function ChatRoomScreen() {
       readCount: 1,
     };
 
-    // Add to UI optimistically
-    setMessages((prev) => [...prev, newMessage]);
+    // Add to UI optimistically (real-time listener will pick it up)
     setUploadingImages(new Map(uploadingImages.set(messageId, 0)));
 
     try {
@@ -233,10 +208,7 @@ export default function ChatRoomScreen() {
         },
       };
 
-      // Update local state
-      setMessages((prev) =>
-        prev.map((m) => (m.id === messageId ? messageWithImage : m))
-      );
+      // Real-time listener will update with the uploaded image
 
       // Send to Firestore
       const result = await sendMessageWithRetry(conversationId, messageWithImage);
@@ -246,20 +218,12 @@ export default function ChatRoomScreen() {
       newMap.delete(messageId);
       setUploadingImages(newMap);
 
-      if (!result.success && !result.isOffline) {
-        // Mark as failed
-        setMessages((prev) =>
-          prev.map((m) => (m.id === messageId ? { ...m, status: "failed" as const } : m))
-        );
-      }
+      // Real-time listener will handle status updates
     } catch (error: any) {
       console.error('❌ Image upload/send failed:', error);
       Alert.alert('Upload Failed', error.message || 'Failed to upload image. Please try again.');
 
-      // Mark as failed
-      setMessages((prev) =>
-        prev.map((m) => (m.id === messageId ? { ...m, status: "failed" as const, media: { ...m.media!, status: "failed" } } : m))
-      );
+      // Real-time listener will handle failed status
 
       // Clean up upload progress
       const newMap = new Map(uploadingImages);
@@ -269,32 +233,12 @@ export default function ChatRoomScreen() {
   };
 
   const handleRetry = async (messageId: string) => {
-    // Find the failed message
     const failedMessage = messages.find(m => m.id === messageId);
     if (!failedMessage) return;
 
     console.log(`🔄 Manual retry for message ${messageId.substring(0, 8)}`);
-
-    // Update status to sending
-    setMessages((prev) =>
-      prev.map((m) => (m.id === messageId ? { ...m, status: "sending" as const } : m))
-    );
-
-    const result = await sendMessageWithRetry(conversationId, failedMessage);
-    
-    if (result.success) {
-      console.log('✅ Retry successful');
-      // Status will be updated by real-time listener
-    } else if (result.isOffline) {
-      console.log('📦 Still offline - message queued');
-      // Keep in sending state
-    } else {
-      console.error('❌ Retry failed after all attempts');
-      // Back to failed status
-      setMessages((prev) =>
-        prev.map((m) => (m.id === messageId ? { ...m, status: "failed" as const } : m))
-      );
-    }
+    await sendMessageWithRetry(conversationId, failedMessage);
+    // Real-time listener will update the status
   };
 
   return (
@@ -305,21 +249,59 @@ export default function ChatRoomScreen() {
     >
       <ConnectionBanner />
 
-      <FlashList
-        data={messages}
-        renderItem={({ item }) => (
-          <MessageBubble
-            message={item}
-            isOwn={item.senderId === currentUserId}
-            showSenderName={conversation?.type === 'group'}
-            conversationType={conversation?.type}
-            totalParticipants={conversation?.participants.length}
-            onRetry={handleRetry}
-          />
-        )}
-        onViewableItemsChanged={onViewableItemsChanged}
-        viewabilityConfig={viewabilityConfig}
-      />
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <LoadingSpinner text="Loading messages..." size="large" />
+        </View>
+      ) : (
+        <FlashList
+          data={[...messages].reverse()}
+          renderItem={({ item }) => (
+            <MessageBubble
+              message={item}
+              isOwn={item.senderId === currentUserId}
+              showSenderName={conversation?.type === 'group'}
+              conversationType={conversation?.type}
+              totalParticipants={conversation?.participants.length}
+              onRetry={handleRetry}
+            />
+          )}
+          onViewableItemsChanged={onViewableItemsChanged}
+          viewabilityConfig={viewabilityConfig}
+          keyExtractor={(item) => item.id}
+          onEndReached={() => {
+            // Auto-load more when scrolling to bottom
+            if (hasMore && !loadingMore) {
+              console.log('🔄 Auto-loading more messages...');
+              loadMore();
+            }
+          }}
+          onEndReachedThreshold={0.5}
+          ListFooterComponent={
+            hasMore ? (
+              <View style={styles.loadMoreContainer}>
+                {loadingMore ? (
+                  <LoadingSpinner text="Loading older messages..." />
+                ) : (
+                  <TouchableOpacity style={styles.loadMoreButton} onPress={loadMore}>
+                    <Text style={styles.loadMoreText}>Load Older Messages</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            ) : messages.length > 0 ? (
+              <View style={styles.endOfMessages}>
+                <Text style={styles.endOfMessagesText}>— Beginning of conversation —</Text>
+              </View>
+            ) : null
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyStateText}>No messages yet</Text>
+              <Text style={styles.emptyStateSubtext}>Send a message to start the conversation</Text>
+            </View>
+          }
+        />
+      )}
 
       {/* Show upload progress */}
       {Array.from(uploadingImages.entries()).map(([messageId, progress]) => (
@@ -343,5 +325,51 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#f5f5f5",
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadMoreContainer: {
+    padding: 16,
+    alignItems: 'center',
+  },
+  loadMoreButton: {
+    backgroundColor: '#007AFF',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 20,
+  },
+  loadMoreText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  endOfMessages: {
+    padding: 20,
+    alignItems: 'center',
+  },
+  endOfMessagesText: {
+    color: '#999',
+    fontSize: 13,
+    fontStyle: 'italic',
+  },
+  emptyState: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 40,
+  },
+  emptyStateText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#666',
+    marginBottom: 8,
+  },
+  emptyStateSubtext: {
+    fontSize: 14,
+    color: '#999',
+    textAlign: 'center',
   },
 });

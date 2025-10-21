@@ -37,7 +37,7 @@ function AppContent() {
     if (loading) return; // Don't redirect while checking auth state
 
     // Wait for segments to be ready (avoid redirecting before navigation is initialized)
-    if (!segments || segments.length === 0) {
+    if (!segments || segments.length <= 1) {
       console.log('🛡️ Auth guard: Waiting for navigation to initialize...');
       return;
     }

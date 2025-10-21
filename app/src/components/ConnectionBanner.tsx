@@ -22,7 +22,7 @@ export default function ConnectionBanner() {
   };
 
   return (
-    <View style={styles.banner}>
+    <View style={styles.banner} testID="offline-banner">
       <Text style={styles.text}>{getMessage()}</Text>
       <Text style={styles.subText}>Messages will send when connection is restored</Text>
     </View>
@@ -31,12 +31,15 @@ export default function ConnectionBanner() {
 
 const styles = StyleSheet.create({
   banner: {
-    backgroundColor: '#ff9800',
+    backgroundColor: '#FF9500',
     paddingVertical: 12,
     paddingHorizontal: 16,
     alignItems: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e68900',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   text: {
     color: '#fff',
@@ -47,6 +50,7 @@ const styles = StyleSheet.create({
   subText: {
     color: 'rgba(255, 255, 255, 0.9)',
     fontSize: 12,
+    fontWeight: '500',
   },
 });
 

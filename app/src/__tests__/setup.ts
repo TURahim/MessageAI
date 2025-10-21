@@ -1,5 +1,18 @@
 import { initializeTestEnvironment, RulesTestEnvironment } from '@firebase/rules-unit-testing';
 
+// Mock NetInfo
+jest.mock('@react-native-community/netinfo', () => ({
+  __esModule: true,
+  default: {
+    fetch: jest.fn(() => Promise.resolve({
+      isConnected: true,
+      isInternetReachable: true,
+      type: 'wifi',
+    })),
+    addEventListener: jest.fn(() => jest.fn()),
+  },
+}));
+
 let testEnv: RulesTestEnvironment;
 
 beforeAll(async () => {
