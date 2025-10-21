@@ -15,12 +15,11 @@ import { auth } from "@/lib/firebase";
 import { Timestamp } from "firebase/firestore";
 import MessageBubble from "@/components/MessageBubble";
 import MessageInput from "@/components/MessageInput";
-import { useNetworkStatus } from "@/hooks/useNetworkStatus";
+import ConnectionBanner from "@/components/ConnectionBanner";
 
 export default function ChatRoomScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [messages, setMessages] = useState<Message[]>([]);
-  const { isOnline } = useNetworkStatus();
   
   const conversationId = id || "demo-conversation-1";
   const currentUserId = auth.currentUser?.uid || "anonymous";
@@ -123,12 +122,7 @@ export default function ChatRoomScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={90}
     >
-      {/* Offline Banner */}
-      {!isOnline && (
-        <View style={styles.offlineBanner}>
-          <Text style={styles.offlineText}>📡 No internet connection</Text>
-        </View>
-      )}
+      <ConnectionBanner />
 
       <FlashList
         data={messages}
@@ -151,19 +145,5 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#f5f5f5",
-  },
-  offlineBanner: {
-    backgroundColor: '#ff9800',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-  },
-  offlineText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  messageList: {
-    paddingVertical: 10,
   },
 });

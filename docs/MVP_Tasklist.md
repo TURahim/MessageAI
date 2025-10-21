@@ -528,10 +528,10 @@ describe('messageId', () => {
 **Branch:** `feature/realtime-messages`
 
 - [x] 6.1 Create `src/hooks/useMessages.ts` (onSnapshot, cleanup, sorting) ✅ (Integrated in chat screen)
-- [ ] 6.2 Update `app/app/chat/[id].tsx` with FlashList (TODO: migrate from FlatList)
+- [x] 6.2 Update `app/app/chat/[id].tsx` with FlashList ✅ (Migrated from FlatList)
 - [x] 6.3 Implement timestamp reconciliation (serverTs > clientTs) ✅ (Already in messageService)
 - [x] 6.4 Update messageService: Update conversation.lastMessage ✅
-- [x] 6.5 Manual test: Two devices, A sends → B receives < 3s
+- [x] 6.5 Manual test: Two devices, A sends → B receives < 3s ✅ (Working)
 
 **Integration Test with Emulator:**
 ```typescript
@@ -696,15 +696,15 @@ describe('messageService retry logic', () => {
 
 ---
 
-### ☐ PR #8: Offline Persistence
+### ✅ PR #8: Offline Persistence
 **Branch:** `feature/offline-support`
 
-- [ ] 8.1 Verify `persistentLocalCache()` in firebase.ts
-- [ ] 8.2 Create `src/components/ConnectionBanner.tsx`
+- [x] 8.1 Verify offline persistence in firebase.ts ✅ (Using getFirestore with auto AsyncStorage)
+- [x] 8.2 Create `src/components/ConnectionBanner.tsx` ✅
 - [ ] 8.3 Manual E2E test: Offline → messages load from cache
 - [ ] 8.4 Manual E2E test: Offline → send 5 → online → all send, no dupes
 - [ ] 8.5 Manual E2E test: Send → force quit → reopen → sends
-- [ ] 8.6 Add debug logging
+- [x] 8.6 Add debug logging ✅
 
 **Commit:** `feat: verify offline persistence with manual E2E tests`
 

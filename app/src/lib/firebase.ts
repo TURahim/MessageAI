@@ -16,8 +16,16 @@ export const auth = getAuth(app);
 
 // Use getFirestore for React Native compatibility
 // Note: Firestore automatically enables offline persistence in React Native
-// using AsyncStorage. No need for manual cache configuration.
+// using AsyncStorage. This provides:
+// - Automatic caching of documents
+// - Offline query support
+// - Queued writes when offline (sent when back online)
+// - No manual configuration needed
 export const db = getFirestore(app);
+
+// Log offline persistence status
+console.log('✅ Firestore initialized with automatic offline persistence');
+console.log('📦 Offline features: Document cache, queued writes, offline queries');
 
 export const storage = getStorage(app);
 

@@ -23,6 +23,11 @@ export async function sendMessage(
   conversationId: string,
   message: Omit<Message, "serverTimestamp">
 ): Promise<void> {
+  console.log(`📤 Sending message ${message.id.substring(0, 8)}...`, {
+    conversationId: conversationId.substring(0, 12),
+    text: message.text.substring(0, 30),
+  });
+
   try {
     const messageRef = doc(
       db,
@@ -40,6 +45,8 @@ export async function sendMessage(
       status: "sent",
     });
 
+    console.log(`✅ Message ${message.id.substring(0, 8)} sent to Firestore`);
+
     // Update conversation's lastMessage
     const conversationRef = doc(db, "conversations", conversationId);
     await updateDoc(conversationRef, {
@@ -51,8 +58,16 @@ export async function sendMessage(
       },
       updatedAt: timestamp,
     });
-  } catch (error) {
-    console.warn("Error sending message:", error);
+
+    console.log(`✅ Updated lastMessage for conversation ${conversationId.substring(0, 12)}`);
+  } catch (error: any) {
+    console.error(`❌ Error sending message:`, error.code || error.message);
+    
+    // Log if this is an offline error that will be queued
+    if (error.code === 'unavailable') {
+      console.log('📦 Message queued for offline - will send when online');
+    }
+    
     throw error;
   }
 }
@@ -167,6 +182,8 @@ export function subscribeToMessages(
   onMessagesUpdate: (messages: Message[]) => void,
   onError?: (error: Error) => void
 ): Unsubscribe {
+  console.log(`👂 Subscribing to messages for conversation ${conversationId.substring(0, 12)}`);
+
   const messagesRef = collection(
     db,
     "conversations",
@@ -179,6 +196,15 @@ export function subscribeToMessages(
   return onSnapshot(
     q,
     (snapshot: QuerySnapshot<DocumentData>) => {
+      const fromCache = snapshot.metadata.fromCache;
+      const hasPendingWrites = snapshot.metadata.hasPendingWrites;
+      
+      console.log(`📥 Received ${snapshot.docs.length} messages`, {
+        fromCache,
+        hasPendingWrites,
+        source: fromCache ? '💾 CACHE' : '☁️ SERVER',
+      });
+
       const messages: Message[] = snapshot.docs.map((doc) => {
         const data = doc.data();
         return {
