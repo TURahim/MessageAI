@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, Image, ActivityIndicator } from 'react-native';
+import { router } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
 import { signOut } from '@/services/authService';
 import * as ImagePicker from 'expo-image-picker';
 import { updateProfile } from 'firebase/auth';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, getDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { auth, db, storage } from '@/lib/firebase';
 
@@ -13,9 +14,64 @@ export default function ProfileScreen() {
   const [editing, setEditing] = useState(false);
   const [displayName, setDisplayName] = useState(user?.displayName || '');
   const [uploading, setUploading] = useState(false);
+  const [firestoreProfile, setFirestoreProfile] = useState<any>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+
+  // Log user object for debugging
+  useEffect(() => {
+    console.log('👤 Profile screen - Firebase Auth user:', {
+      hasUser: !!user,
+      uid: user?.uid,
+      email: user?.email,
+      displayName: user?.displayName,
+      photoURL: user?.photoURL,
+      emailVerified: user?.emailVerified,
+    });
+  }, [user]);
+
+  // Fetch Firestore profile data
+  useEffect(() => {
+    if (!user) return;
+    
+    const fetchProfile = async () => {
+      try {
+        console.log('📥 Fetching Firestore profile for:', user.uid);
+        const userRef = doc(db, 'users', user.uid);
+        const userDoc = await getDoc(userRef);
+        
+        if (userDoc.exists()) {
+          const data = userDoc.data();
+          console.log('✅ Firestore profile loaded:', data);
+          setFirestoreProfile(data);
+          setFetchError(null);
+        } else {
+          console.warn('⚠️ User document does not exist in Firestore');
+          setFetchError('User profile not found');
+        }
+      } catch (error: any) {
+        console.error('❌ Error fetching Firestore profile:', error);
+        console.error('Error code:', error.code);
+        console.error('Error message:', error.message);
+        setFetchError(error.message || 'Failed to load profile');
+      }
+    };
+    
+    fetchProfile();
+  }, [user]);
 
   const handleSignOut = async () => {
-    await signOut();
+    try {
+      console.log('🚪 User clicked sign out button');
+      await signOut();
+      console.log('📤 Sign out completed, forcing navigation to login');
+      
+      // Force navigation to login screen immediately
+      // Use replace to prevent back navigation
+      router.replace('/(auth)/login');
+    } catch (error: any) {
+      console.error('❌ Sign out failed:', error);
+      Alert.alert('Sign Out Error', error.message || 'Failed to sign out. Please try again.');
+    }
   };
 
   const handleSaveProfile = async () => {
@@ -94,9 +150,21 @@ export default function ProfileScreen() {
     }
   };
 
+  // Get display values with fallback to Firestore data
+  const profileDisplayName = user?.displayName || firestoreProfile?.displayName || 'N/A';
+  const profileEmail = user?.email || firestoreProfile?.email || 'N/A';
+  const profilePhotoURL = user?.photoURL || firestoreProfile?.photoURL || null;
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Profile</Text>
+
+      {/* Error Message */}
+      {fetchError && (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>⚠️ {fetchError}</Text>
+        </View>
+      )}
 
       {/* Profile Photo */}
       <View style={styles.photoContainer}>
@@ -104,12 +172,12 @@ export default function ProfileScreen() {
           <View style={styles.photoPlaceholder}>
             <ActivityIndicator size="large" color="#007AFF" />
           </View>
-        ) : user?.photoURL ? (
-          <Image source={{ uri: user.photoURL }} style={styles.photo} />
+        ) : profilePhotoURL ? (
+          <Image source={{ uri: profilePhotoURL }} style={styles.photo} />
         ) : (
           <View style={styles.photoPlaceholder}>
             <Text style={styles.photoPlaceholderText}>
-              {user?.displayName?.charAt(0).toUpperCase() || '?'}
+              {profileDisplayName?.charAt(0).toUpperCase() || '?'}
             </Text>
           </View>
         )}
@@ -134,14 +202,14 @@ export default function ProfileScreen() {
             autoFocus
           />
         ) : (
-          <Text style={styles.value}>{user?.displayName || 'N/A'}</Text>
+          <Text style={styles.value}>{profileDisplayName}</Text>
         )}
       </View>
 
       {/* Email (read-only) */}
       <View style={styles.infoContainer}>
         <Text style={styles.label}>Email:</Text>
-        <Text style={styles.value}>{user?.email || 'N/A'}</Text>
+        <Text style={styles.value}>{profileEmail}</Text>
       </View>
 
       {/* Edit/Save Button */}
@@ -276,6 +344,19 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  errorContainer: {
+    backgroundColor: '#FFE5E5',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#FF3B30',
+  },
+  errorText: {
+    color: '#FF3B30',
+    fontSize: 14,
+    textAlign: 'center',
   },
 });
 

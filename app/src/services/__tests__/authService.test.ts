@@ -53,7 +53,10 @@ jest.mock('firebase/auth', () => ({
 jest.mock('firebase/firestore', () => ({
   doc: jest.fn(),
   setDoc: jest.fn(),
-  getDoc: jest.fn(),
+  getDoc: jest.fn(() => Promise.resolve({
+    exists: () => false,
+    data: () => null,
+  })),
   serverTimestamp: jest.fn(() => ({ seconds: Date.now() / 1000 })),
 }));
 

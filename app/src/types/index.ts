@@ -56,6 +56,7 @@ export interface Conversation {
   participants: string[]; // Max 20 for MVP
   lastMessage: LastMessage | null;
   name?: string; // Groups only
+  typing?: { [userId: string]: Timestamp }; // Typing indicators
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
 }

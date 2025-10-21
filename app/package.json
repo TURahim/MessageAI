@@ -9,7 +9,10 @@
     "web": "expo start --web",
     "dev": "expo start",
     "emu": "firebase emulators:start",
-    "test": "jest --runInBand"
+    "test": "jest --runInBand",
+    "test:watch": "jest --watch --runInBand",
+    "test:coverage": "jest --coverage --runInBand",
+    "test:emulator": "USE_EMULATOR=true jest --runInBand"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "^2.2.0",

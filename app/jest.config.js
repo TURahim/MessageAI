@@ -1,7 +1,18 @@
 module.exports = {
   preset: 'react-native',
-  setupFilesAfterEnv: ['@testing-library/jest-native/extend-expect'],
+  setupFilesAfterEnv: [
+    '@testing-library/jest-native/extend-expect',
+    '<rootDir>/src/__tests__/setup.ts'
+  ],
   testEnvironment: 'node',
+  testMatch: [
+    '**/__tests__/**/*.(test|spec).(ts|tsx|js)',
+    '**/*.(test|spec).(ts|tsx|js)'
+  ],
+  testPathIgnorePatterns: [
+    '/node_modules/',
+    '<rootDir>/src/__tests__/setup.ts'
+  ],
   transform: {
     '^.+\\.(js|jsx|ts|tsx)$': 'babel-jest',
   },

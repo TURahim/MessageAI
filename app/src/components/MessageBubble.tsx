@@ -7,10 +7,19 @@ interface Props {
   message: Message;
   isOwn: boolean;
   showSenderName?: boolean;
+  conversationType?: 'direct' | 'group';
+  totalParticipants?: number;
   onRetry?: (messageId: string) => void;
 }
 
-export default function MessageBubble({ message, isOwn, showSenderName = false, onRetry }: Props) {
+export default function MessageBubble({ 
+  message, 
+  isOwn, 
+  showSenderName = false, 
+  conversationType = 'direct',
+  totalParticipants = 2,
+  onRetry 
+}: Props) {
   const getTimestamp = () => {
     const timestamp = message.serverTimestamp || message.clientTimestamp;
     if (!timestamp) return '';
@@ -22,16 +31,32 @@ export default function MessageBubble({ message, isOwn, showSenderName = false, 
   const getStatusIcon = () => {
     if (!isOwn) return null;
 
-    switch (message.status) {
-      case 'sending':
-        return '🕐';
-      case 'sent':
-        return '✓';
-      case 'failed':
-        return '❌';
-      default:
-        return null;
+    // Failed status takes precedence
+    if (message.status === 'failed') {
+      return '❌';
     }
+
+    // Sending status
+    if (message.status === 'sending') {
+      return '🕐';
+    }
+
+    // Read receipts
+    const readCount = message.readBy?.length || 0;
+    
+    if (conversationType === 'direct') {
+      // For direct chats: ✓ sent, ✓✓ read
+      return readCount > 1 ? '✓✓' : '✓';
+    } else if (conversationType === 'group') {
+      // For groups: show count if anyone read it (excluding sender)
+      const othersReadCount = readCount - 1; // Exclude sender
+      if (othersReadCount > 0) {
+        return `✓ ${othersReadCount}/${totalParticipants - 1}`;
+      }
+      return '✓';
+    }
+
+    return '✓';
   };
 
   return (

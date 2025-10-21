@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator, Modal } from 'react-native';
 import { router } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
 import { useConversations } from '@/hooks/useConversations';
@@ -8,6 +8,7 @@ import ConversationListItem from '@/components/ConversationListItem';
 export default function ChatsScreen() {
   const { user } = useAuth();
   const { conversations, loading } = useConversations(user?.uid);
+  const [showNewChatMenu, setShowNewChatMenu] = useState(false);
 
   if (loading) {
     return (
@@ -49,12 +50,53 @@ export default function ChatsScreen() {
         contentContainerStyle={styles.listContent}
       />
       
+      {/* FAB with menu */}
       <TouchableOpacity 
         style={styles.fab}
-        onPress={() => router.push('/users')}
+        onPress={() => setShowNewChatMenu(true)}
       >
         <Text style={styles.fabText}>+</Text>
       </TouchableOpacity>
+
+      {/* New Chat Menu Modal */}
+      <Modal
+        visible={showNewChatMenu}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowNewChatMenu(false)}
+      >
+        <TouchableOpacity 
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowNewChatMenu(false)}
+        >
+          <View style={styles.menuContainer}>
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
+                setShowNewChatMenu(false);
+                router.push('/users');
+              }}
+            >
+              <Text style={styles.menuIcon}>💬</Text>
+              <Text style={styles.menuText}>New Chat</Text>
+            </TouchableOpacity>
+
+            <View style={styles.menuDivider} />
+
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
+                setShowNewChatMenu(false);
+                router.push('/newGroup');
+              }}
+            >
+              <Text style={styles.menuIcon}>👥</Text>
+              <Text style={styles.menuText}>New Group</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
@@ -128,6 +170,43 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 28,
     fontWeight: '300',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+    alignItems: 'flex-end',
+    paddingRight: 20,
+    paddingBottom: 90,
+  },
+  menuContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    minWidth: 200,
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    overflow: 'hidden',
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+  },
+  menuIcon: {
+    fontSize: 24,
+    marginRight: 12,
+  },
+  menuText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#000',
+  },
+  menuDivider: {
+    height: 1,
+    backgroundColor: '#e0e0e0',
   },
 });
 

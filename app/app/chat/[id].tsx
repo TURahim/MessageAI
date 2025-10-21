@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet, KeyboardAvoidingView, Platform } from "react-native";
 import { FlashList } from "@shopify/flash-list";
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useNavigation } from "expo-router";
 import { newMessageId } from "@/utils/messageId";
 import { Message } from "@/types/message";
 import {
@@ -11,18 +11,78 @@ import {
   markMessagesAsRead,
   updateMessageStatus,
 } from "@/lib/messageService";
-import { auth } from "@/lib/firebase";
-import { Timestamp } from "firebase/firestore";
+import { auth, db } from "@/lib/firebase";
+import { Timestamp, doc, getDoc } from "firebase/firestore";
 import MessageBubble from "@/components/MessageBubble";
 import MessageInput from "@/components/MessageInput";
 import ConnectionBanner from "@/components/ConnectionBanner";
+import OnlineIndicator from "@/components/OnlineIndicator";
+import TypingIndicator from "@/components/TypingIndicator";
+import { usePresence } from "@/hooks/usePresence";
+import { useTypingIndicator } from "@/hooks/useTypingIndicator";
+import { useMarkAsRead } from "@/hooks/useMarkAsRead";
+import { Conversation } from "@/types/index";
 
 export default function ChatRoomScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const navigation = useNavigation();
   const [messages, setMessages] = useState<Message[]>([]);
+  const [conversation, setConversation] = useState<Conversation | null>(null);
   
   const conversationId = id || "demo-conversation-1";
   const currentUserId = auth.currentUser?.uid || "anonymous";
+
+  // Track presence for this active conversation
+  usePresence(conversationId);
+
+  // Track typing indicator
+  const { startTyping, stopTyping } = useTypingIndicator(conversationId, currentUserId);
+
+  // Track read receipts
+  const { onViewableItemsChanged, viewabilityConfig } = useMarkAsRead(conversationId, currentUserId);
+
+  // Fetch conversation details
+  useEffect(() => {
+    const fetchConversation = async () => {
+      try {
+        const convDoc = await getDoc(doc(db, 'conversations', conversationId));
+        if (convDoc.exists()) {
+          setConversation({ id: convDoc.id, ...convDoc.data() } as Conversation);
+        }
+      } catch (error) {
+        console.error('Error fetching conversation:', error);
+      }
+    };
+
+    fetchConversation();
+  }, [conversationId]);
+
+  // Update header with conversation name and online indicator
+  useEffect(() => {
+    if (conversation) {
+      let title = 'Chat';
+      let headerRight;
+
+      if (conversation.type === 'direct') {
+        const otherUserId = conversation.participants.find(uid => uid !== currentUserId);
+        // For direct chats, show online indicator in header
+        if (otherUserId) {
+          headerRight = () => (
+            <View style={{ marginRight: 15 }}>
+              <OnlineIndicator userId={otherUserId} size={12} />
+            </View>
+          );
+        }
+      } else {
+        title = conversation.name || 'Group Chat';
+      }
+
+      navigation.setOptions({
+        title,
+        headerRight,
+      });
+    }
+  }, [conversation, currentUserId, navigation]);
 
   // Real-time listener for messages
   useEffect(() => {
@@ -30,18 +90,6 @@ export default function ChatRoomScreen() {
       conversationId,
       (newMessages) => {
         setMessages(newMessages);
-        
-        // Mark messages from others as read
-        const unreadMessages = newMessages.filter(
-          (m: Message) => m.senderId !== currentUserId && !m.readBy.includes(currentUserId)
-        );
-        
-        if (unreadMessages.length > 0) {
-          const messageIds = unreadMessages.map((m: Message) => m.id);
-          markMessagesAsRead(conversationId, messageIds).catch((err: Error) =>
-            console.warn("Failed to mark messages as read:", err)
-          );
-        }
       },
       (error) => {
         console.error("Error subscribing to messages:", error);
@@ -139,13 +187,23 @@ export default function ChatRoomScreen() {
           <MessageBubble
             message={item}
             isOwn={item.senderId === currentUserId}
-            showSenderName={false}
+            showSenderName={conversation?.type === 'group'}
+            conversationType={conversation?.type}
+            totalParticipants={conversation?.participants.length}
             onRetry={handleRetry}
           />
         )}
+        onViewableItemsChanged={onViewableItemsChanged}
+        viewabilityConfig={viewabilityConfig}
       />
 
-      <MessageInput onSend={handleSend} />
+      <TypingIndicator conversationId={conversationId} currentUserId={currentUserId} />
+
+      <MessageInput 
+        onSend={handleSend} 
+        onTyping={startTyping}
+        onStopTyping={stopTyping}
+      />
     </KeyboardAvoidingView>
   );
 }

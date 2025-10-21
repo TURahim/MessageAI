@@ -45,8 +45,43 @@ export async function signUpWithEmail(
   return user;
 }
 
+/**
+ * Ensure user document exists in Firestore
+ * Creates or updates the document with latest auth info
+ */
+async function ensureUserDocument(user: any) {
+  const userRef = doc(db, 'users', user.uid);
+  const userDoc = await getDoc(userRef);
+
+  const userData = {
+    uid: user.uid,
+    email: user.email,
+    displayName: user.displayName || user.email?.split('@')[0] || 'User',
+    photoURL: user.photoURL || null,
+    presence: {
+      status: 'offline' as const,
+      lastSeen: serverTimestamp(),
+      activeConversationId: null
+    },
+  };
+
+  if (!userDoc.exists()) {
+    // Create new document
+    await setDoc(userRef, {
+      ...userData,
+      createdAt: serverTimestamp(),
+    });
+    console.log('✅ Created user document for:', user.uid);
+  } else {
+    // Update existing document (in case email/displayName/photo changed)
+    await setDoc(userRef, userData, { merge: true });
+    console.log('✅ Updated user document for:', user.uid);
+  }
+}
+
 export async function signInWithEmail(email: string, password: string) {
   const userCredential = await signInWithEmailAndPassword(auth, email, password);
+  await ensureUserDocument(userCredential.user);
   return userCredential.user;
 }
 
@@ -56,28 +91,9 @@ export async function signInWithGoogle(idToken: string) {
   
   // Sign in with Firebase
   const userCredential = await signInWithCredential(auth, credential);
-  const user = userCredential.user;
+  await ensureUserDocument(userCredential.user);
 
-  // Check if user document exists, if not create it
-  const userRef = doc(db, 'users', user.uid);
-  const userDoc = await getDoc(userRef);
-
-  if (!userDoc.exists()) {
-    await setDoc(userRef, {
-      uid: user.uid,
-      email: user.email,
-      displayName: user.displayName || 'Google User',
-      photoURL: user.photoURL || null,
-      presence: {
-        status: 'offline',
-        lastSeen: serverTimestamp(),
-        activeConversationId: null,
-      },
-      createdAt: serverTimestamp(),
-    });
-  }
-
-  return user;
+  return userCredential.user;
 }
 
 // Hook for Google Sign-In configuration with runtime detection
@@ -169,5 +185,12 @@ export function useGoogleAuth() {
 }
 
 export async function signOut() {
-  await firebaseSignOut(auth);
+  try {
+    console.log('🚪 Signing out...');
+    await firebaseSignOut(auth);
+    console.log('✅ Sign out successful');
+  } catch (error: any) {
+    console.error('❌ Sign out error:', error);
+    throw error;
+  }
 }

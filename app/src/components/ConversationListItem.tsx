@@ -4,6 +4,7 @@ import { router } from 'expo-router';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Conversation, User } from '@/types/index';
+import OnlineIndicator from './OnlineIndicator';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 
@@ -33,7 +34,11 @@ export default function ConversationListItem({ conversation, currentUserId }: Pr
       if (userDoc.exists()) {
         setOtherUser({ uid: userDoc.id, ...userDoc.data() } as User);
       }
-    } catch (error) {
+    } catch (error: any) {
+      // Silently ignore permission errors (happens after sign out)
+      if (error.message?.includes('Missing or insufficient permissions')) {
+        return;
+      }
       console.error('Error fetching user info:', error);
     }
   };
@@ -69,27 +74,40 @@ export default function ConversationListItem({ conversation, currentUserId }: Pr
     return dayjs(timestamp).fromNow();
   };
 
-  const isOnline = () => {
-    if (conversation.type === 'group') return false;
-    return otherUser?.presence?.status === 'online';
-  };
-
   const handlePress = () => {
     router.push(`/chat/${conversation.id}`);
   };
 
+  const getOtherUserId = () => {
+    if (conversation.type === 'direct') {
+      return conversation.participants.find(uid => uid !== currentUserId);
+    }
+    return null;
+  };
+
+  const otherUserId = getOtherUserId();
+
   return (
     <TouchableOpacity style={styles.container} onPress={handlePress}>
-      {/* Avatar */}
-      {otherUser?.photoURL ? (
-        <Image source={{ uri: otherUser.photoURL }} style={styles.avatar} />
-      ) : (
-        <View style={styles.avatarPlaceholder}>
-          <Text style={styles.avatarText}>
-            {getDisplayName().charAt(0).toUpperCase()}
-          </Text>
-        </View>
-      )}
+      <View style={styles.avatarContainer}>
+        {/* Avatar */}
+        {otherUser?.photoURL ? (
+          <Image source={{ uri: otherUser.photoURL }} style={styles.avatar} />
+        ) : (
+          <View style={styles.avatarPlaceholder}>
+            <Text style={styles.avatarText}>
+              {getDisplayName().charAt(0).toUpperCase()}
+            </Text>
+          </View>
+        )}
+        
+        {/* Online Indicator - positioned on avatar */}
+        {conversation.type === 'direct' && otherUserId && (
+          <View style={styles.onlineIndicatorWrapper}>
+            <OnlineIndicator userId={otherUserId} size={14} />
+          </View>
+        )}
+      </View>
 
       {/* Conversation Info */}
       <View style={styles.content}>
@@ -106,9 +124,6 @@ export default function ConversationListItem({ conversation, currentUserId }: Pr
           </Text>
         </View>
       </View>
-
-      {/* Online Indicator */}
-      {isOnline() && <View style={styles.onlineIndicator} />}
     </TouchableOpacity>
   );
 }
@@ -122,11 +137,14 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
   },
+  avatarContainer: {
+    position: 'relative',
+    marginRight: 12,
+  },
   avatar: {
     width: 56,
     height: 56,
     borderRadius: 28,
-    marginRight: 12,
   },
   avatarPlaceholder: {
     width: 56,
@@ -135,12 +153,16 @@ const styles = StyleSheet.create({
     backgroundColor: '#007AFF',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
   },
   avatarText: {
     color: '#fff',
     fontSize: 22,
     fontWeight: 'bold',
+  },
+  onlineIndicatorWrapper: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
   },
   content: {
     flex: 1,
@@ -171,12 +193,6 @@ const styles = StyleSheet.create({
     color: '#666',
     flex: 1,
   },
-  onlineIndicator: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#34C759',
-    marginLeft: 8,
-  },
 });
+
 

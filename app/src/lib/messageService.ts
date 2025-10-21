@@ -8,6 +8,8 @@ import {
   orderBy,
   onSnapshot,
   serverTimestamp,
+  arrayUnion,
+  writeBatch,
   Unsubscribe,
   QuerySnapshot,
   DocumentData,
@@ -163,30 +165,29 @@ export async function updateMessageStatus(
 
 /**
  * Marks messages as read by the current user
+ * Uses arrayUnion for idempotent updates
  */
 export async function markMessagesAsRead(
   conversationId: string,
   messageIds: string[]
 ): Promise<void> {
+  if (messageIds.length === 0) return;
+
   try {
     const currentUserId = auth.currentUser?.uid;
     if (!currentUserId) return;
 
-    const promises = messageIds.map((messageId) => {
-      const messageRef = doc(
-        db,
-        "conversations",
-        conversationId,
-        "messages",
-        messageId
-      );
-      return updateDoc(messageRef, {
-        readBy: [currentUserId], // In production, use arrayUnion
-        readCount: 1,
+    const batch = writeBatch(db);
+    
+    messageIds.forEach((messageId) => {
+      const messageRef = doc(db, "conversations", conversationId, "messages", messageId);
+      batch.update(messageRef, {
+        readBy: arrayUnion(currentUserId),
       });
     });
 
-    await Promise.all(promises);
+    await batch.commit();
+    console.log(`👁️ Marked ${messageIds.length} messages as read`);
   } catch (error) {
     console.warn("Error marking messages as read:", error);
   }

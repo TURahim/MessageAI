@@ -198,8 +198,21 @@ export async function createGroupConversation(
   groupName: string,
   creatorId: string
 ): Promise<string> {
+  // Validation
   if (participants.length < 3) {
     throw new Error('Group conversations require at least 3 participants');
+  }
+
+  if (participants.length > 20) {
+    throw new Error('Group conversations cannot have more than 20 participants');
+  }
+
+  if (!groupName || groupName.trim().length === 0) {
+    throw new Error('Group name is required');
+  }
+
+  if (!participants.includes(creatorId)) {
+    throw new Error('Creator must be included in participants');
   }
 
   const conversationRef = doc(collection(db, 'conversations'));
@@ -209,12 +222,14 @@ export async function createGroupConversation(
     id: conversationId,
     type: 'group',
     participants,
-    name: groupName,
+    name: groupName.trim(),
     createdBy: creatorId,
     lastMessage: null,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
+
+  console.log(`👥 Group "${groupName}" created with ${participants.length} members`);
 
   return conversationId;
 }

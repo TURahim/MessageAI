@@ -3,16 +3,37 @@ import { View, TextInput, TouchableOpacity, StyleSheet, Text as RNText } from 'r
 
 interface Props {
   onSend: (text: string) => void;
+  onTyping?: () => void;
+  onStopTyping?: () => void;
   placeholder?: string;
 }
 
-export default function MessageInput({ onSend, placeholder = 'Type a message...' }: Props) {
+export default function MessageInput({ 
+  onSend, 
+  onTyping, 
+  onStopTyping, 
+  placeholder = 'Type a message...' 
+}: Props) {
   const [text, setText] = useState('');
+
+  const handleChangeText = (newText: string) => {
+    setText(newText);
+    
+    // Trigger typing event when user types
+    if (newText.length > text.length && onTyping) {
+      onTyping();
+    }
+  };
 
   const handleSend = () => {
     if (text.trim()) {
       onSend(text.trim());
       setText('');
+      
+      // Stop typing when message is sent
+      if (onStopTyping) {
+        onStopTyping();
+      }
     }
   };
 
@@ -21,7 +42,7 @@ export default function MessageInput({ onSend, placeholder = 'Type a message...'
       <TextInput
         style={styles.input}
         value={text}
-        onChangeText={setText}
+        onChangeText={handleChangeText}
         placeholder={placeholder}
         multiline
         maxLength={1000}
