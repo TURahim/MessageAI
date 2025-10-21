@@ -1,18 +1,25 @@
 # Active Context
 
-## Current Milestone: Expo Router Working ✅
-Expo Router migration + Email/password authentication implemented.
-Routes now correctly loading from nested app/app/ directory (Expo Router default convention).
+## Current Milestone: Phase 2 Complete ✅
+Core messaging system fully implemented with retry logic and offline support.
+All PRs #1-8 complete. Real-time messaging, conversations, and offline persistence working.
 
 ## What's Working
-- ✅ Expo Router file-based routing ((auth)/, (tabs)/, chat/[id])
-- ✅ Email/password authentication with Firestore profiles
+- ✅ Expo Router file-based routing (nested app/app/ structure)
+- ✅ Email/password + Google Sign-In authentication
 - ✅ Auth state management via AuthContext
 - ✅ Auto-redirect based on auth state
+- ✅ User profiles with photo upload to Firebase Storage
+- ✅ Conversation creation and management
+- ✅ Real-time conversation list with useConversations hook
 - ✅ Real-time message sync via Firestore onSnapshot
-- ✅ Optimistic send (messages appear instantly)
-- ✅ Offline persistence (survives app restart)
-- ✅ Idempotent message IDs (no duplicates)
+- ✅ Optimistic send (messages appear instantly < 100ms)
+- ✅ Offline persistence (AsyncStorage cache, queued writes)
+- ✅ Message retry with exponential backoff (3 attempts, 1s/2s/4s)
+- ✅ Graceful offline handling (messages stay in sending, not failed)
+- ✅ FlashList for 60fps scrolling performance
+- ✅ Network status detection and banner
+- ✅ Idempotent message IDs (UUID, no duplicates)
 - ✅ PRD-compliant schema (Message, User, Conversation)
 - ✅ Tests passing (13/13) - firebase, auth, messageId
 - ✅ TypeScript with @ alias imports
@@ -102,30 +109,24 @@ MessageAI/
 - Files tracked: 102 files, 14,267 lines
 - Commits: 2 (initial scaffold + README update)
 
-## Known Issues
-- ✅ RESOLVED: getDevServer TypeError - Fixed with metro-runtime 6.1.2
-- ✅ RESOLVED: Expo Router "Welcome to Expo" screen - Fixed by using nested app/app/ directory
-  - **Root Cause:** Expo Router looks for routes in app/ subdirectory by default
-  - **Solution:** Moved all routes into app/app/ (auth, tabs, chat, _layout, index)
-  - **Critical:** DO NOT flatten structure - nested app/app/ is REQUIRED!
-- ✅ NUCLEAR RESET: Complete reinstall with SDK 54 + React 19.1 + RN 0.81.4
-  - All simulators erased and reset to factory
-  - Fresh install with 968 packages in app/node_modules
-  - PNPM workspace disabled (shamefully-hoist enabled)
-  - expo-router upgraded to 6.0.12 (SDK 54 compatible)
-- ✅ RESOLVED: TypeScript errors - All fixed with @ alias
-- ✅ RESOLVED: React Navigation conflicts - Removed completely
-- ✅ RESOLVED: PNPM hoisting - Disabled workspace, all deps in app/node_modules
-- ✅ RESOLVED: New Architecture conflict - Disabled in app.json
+## Known Issues & Resolutions
+- ✅ RESOLVED: Expo Router "Welcome to Expo" - Nested app/app/ directory required
+- ✅ RESOLVED: Firestore permissions - Split get/list/create with proper guards
+- ✅ RESOLVED: crypto.getRandomValues - Polyfilled with expo-crypto
+- ✅ RESOLVED: Firebase re-initialization - getApps() check added
+- ✅ RESOLVED: Offline error handling - Detect offline vs real errors
+- ✅ RESOLVED: Metro module resolution - pnpm symlinks enabled
+- ✅ RESOLVED: Google Auth configuration - Runtime detection (Expo Go vs dev builds)
+- ⚠️ Auth persistence - Memory only (users re-login per session) - Acceptable for MVP
 - ⚠️ Peer dependency warnings for React 19 - Non-blocking
 
-## Next Actions (PR #3-4)
-1. Create conversationService.ts (create, list, find direct chats)
-2. Build users.tsx screen (list all users)
-3. Implement conversation creation flow
-4. Update (tabs)/index.tsx with real conversation list
-5. Add ConversationListItem component
-6. Subscribe to user's conversations in real-time
+## Next Actions (Phase 3)
+1. PR #9: Presence System (online/offline indicators with heartbeat)
+2. PR #10: Typing Indicators (debounced, 3s clear)
+3. PR #11: Read Receipts (checkmarks for 1-on-1, count for groups)
+4. PR #12: Group Chat (3-20 users, group names)
+5. PR #13: Image Upload (compression, progress)
+6. PR #14: Push Notifications (foreground, notification suppression)
 
 ## Testing Commands
 ```bash

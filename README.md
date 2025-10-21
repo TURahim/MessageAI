@@ -16,15 +16,18 @@ A production-quality real-time messaging application with offline support, optim
 
 ### What's Working Now
 - ✅ Email/password + Google Sign-In authentication
-- ✅ User profiles with photo upload
-- ✅ Create & manage conversations
+- ✅ User profiles with photo upload to Firebase Storage
+- ✅ Create & manage conversations in real-time
 - ✅ Real-time message sync (< 3s delivery)
 - ✅ Optimistic UI (< 100ms render)
-- ✅ Offline persistence (AsyncStorage cache)
-- ✅ Message retry with exponential backoff
-- ✅ Network status detection
-- ✅ FlashList for 60fps scrolling
-- ✅ WhatsApp-style message bubbles
+- ✅ Offline persistence (AsyncStorage cache + queued writes)
+- ✅ Smart retry logic (exponential backoff, server ack check)
+- ✅ Graceful offline handling (messages queue, not fail)
+- ✅ Network status detection with ConnectionBanner
+- ✅ FlashList for 60fps scrolling (100+ messages)
+- ✅ WhatsApp-style message bubbles with status indicators
+- ✅ Failed message recovery with tap-to-retry
+- ✅ Comprehensive debug logging
 - ✅ 13/13 tests passing
 
 ---
