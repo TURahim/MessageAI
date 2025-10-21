@@ -39,4 +39,3 @@ describe('Firebase Configuration', () => {
     expect(app.name).toBe('[DEFAULT]');
   });
 });
-

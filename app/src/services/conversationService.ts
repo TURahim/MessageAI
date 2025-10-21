@@ -10,7 +10,7 @@ import {
   Timestamp,
   orderBy,
 } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { db, auth } from '@/lib/firebase';
 import { Conversation } from '@/types/index';
 
 /**
@@ -20,20 +20,55 @@ export async function createDirectConversation(
   userId1: string,
   userId2: string
 ): Promise<string> {
+  // GUARD: Ensure user is authenticated
+  if (!auth.currentUser) {
+    throw new Error(
+      '❌ Cannot create conversation: User not authenticated. Please log in first.'
+    );
+  }
+
+  // GUARD: Ensure current user is one of the participants
+  if (userId1 !== auth.currentUser.uid && userId2 !== auth.currentUser.uid) {
+    throw new Error(
+      `❌ Cannot create conversation: Current user must be one of the participants.\n` +
+      `Current user: ${auth.currentUser.uid}\n` +
+      `Participants: ${userId1}, ${userId2}`
+    );
+  }
+
   // Sort UIDs alphabetically to ensure consistent ID
   const participants = [userId1, userId2].sort();
   const conversationId = `${participants[0]}_${participants[1]}`;
 
-  const conversationRef = doc(db, 'conversations', conversationId);
+  // DEBUG: Log what we're creating
+  console.log('🔍 Step 1 - Auth check:', {
+    currentUser: auth.currentUser?.uid,
+    userId1,
+    userId2,
+    isAuthenticated: !!auth.currentUser,
+    currentUserInParticipants: participants.includes(auth.currentUser.uid),
+  });
 
-  await setDoc(conversationRef, {
+  const payload = {
     id: conversationId,
     type: 'direct',
     participants,
     lastMessage: null,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
-  });
+  };
+
+  // DEBUG: Log payload
+  console.log('🔍 Step 2 - Conversation payload:', payload);
+  console.log('🔍 Step 3 - Collection path:', 'conversations/' + conversationId);
+
+  const conversationRef = doc(db, 'conversations', conversationId);
+  
+  console.log('🔍 Attempting to create conversation...');
+
+  await setDoc(conversationRef, payload);
+
+  console.log('✅ Conversation created successfully!');
 
   return conversationId;
 }
@@ -48,14 +83,27 @@ export async function findDirectConversation(
   const participants = [userId1, userId2].sort();
   const conversationId = `${participants[0]}_${participants[1]}`;
 
-  const conversationRef = doc(db, 'conversations', conversationId);
-  const conversationSnap = await getDoc(conversationRef);
+  console.log('🔍 findDirectConversation - Checking for existing conversation:', conversationId);
 
-  if (conversationSnap.exists()) {
-    return conversationId;
+  try {
+    const conversationRef = doc(db, 'conversations', conversationId);
+    const conversationSnap = await getDoc(conversationRef);
+
+    if (conversationSnap.exists()) {
+      console.log('✅ Found existing conversation:', conversationId);
+      return conversationId;
+    }
+
+    console.log('ℹ️ No existing conversation found');
+    return null;
+  } catch (error: any) {
+    // Permission error when document doesn't exist - that's okay, return null
+    if (error.code === 'permission-denied') {
+      console.log('ℹ️ Permission denied on getDoc (document might not exist) - will create new');
+      return null;
+    }
+    throw error;
   }
-
-  return null;
 }
 
 /**

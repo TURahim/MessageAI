@@ -1,3 +1,14 @@
+// Mock expo-crypto before importing messageId
+jest.mock('expo-crypto', () => ({
+  getRandomBytes: jest.fn((length: number) => {
+    const array = new Uint8Array(length);
+    for (let i = 0; i < length; i++) {
+      array[i] = Math.floor(Math.random() * 256);
+    }
+    return array;
+  }),
+}));
+
 import newMessageId from "./messageId";
 
 describe('messageId', () => {

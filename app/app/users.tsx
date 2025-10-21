@@ -44,7 +44,14 @@ export default function UsersScreen() {
   }, [currentUser]);
 
   const handleUserPress = async (selectedUser: User) => {
-    if (!currentUser) return;
+    // GUARD: Check authentication
+    if (!currentUser) {
+      console.error('❌ No current user - not authenticated');
+      return;
+    }
+
+    console.log('👤 handleUserPress - Current user:', currentUser.uid);
+    console.log('👤 handleUserPress - Selected user:', selectedUser.uid);
 
     try {
       // Get or create conversation
@@ -53,10 +60,14 @@ export default function UsersScreen() {
         selectedUser.uid
       );
 
+      console.log('✅ Got conversation ID:', conversationId);
+
       // Navigate to chat
       router.push(`/chat/${conversationId}`);
     } catch (error: any) {
-      console.error('Error creating conversation:', error);
+      console.error('❌ Error in handleUserPress:', error);
+      console.error('Error code:', error.code);
+      console.error('Error message:', error.message);
     }
   };
 
