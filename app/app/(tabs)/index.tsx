@@ -4,6 +4,7 @@ import { router, useNavigation } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
 import { useConversations } from '@/hooks/useConversations';
 import { useFriends } from '@/hooks/useFriends';
+import { useUserPresence } from '@/hooks/useUserPresence';
 import { getOrCreateDirectConversation } from '@/services/conversationService';
 import ConversationListItem from '@/components/ConversationListItem';
 import EmptyState from '@/components/EmptyState';
@@ -105,41 +106,47 @@ export default function ChatsScreen() {
     });
   }
 
-  const renderFriendItem = ({ item }: { item: User }) => (
-    <View style={styles.friendItem}>
-      {item.photoURL ? (
-        <Image source={{ uri: item.photoURL }} style={styles.friendAvatar} />
-      ) : (
-        <View style={styles.friendAvatarPlaceholder}>
-          <Text style={styles.friendAvatarText}>
-            {item.displayName?.charAt(0).toUpperCase() || '?'}
-          </Text>
-        </View>
-      )}
-      
-      <View style={styles.friendInfo}>
-        <Text style={styles.friendName}>{item.displayName}</Text>
-        <View style={styles.friendOnlineContainer}>
-          <OnlineIndicator userId={item.uid} size={10} />
-          <Text style={styles.friendOnlineText}>
-            {item.presence?.status === 'online' ? 'Online' : 'Offline'}
-          </Text>
-        </View>
-      </View>
-
-      <TouchableOpacity
-        style={styles.messageButton}
-        onPress={() => handleMessageFriend(item)}
-        disabled={messageLoading === item.uid}
-      >
-        {messageLoading === item.uid ? (
-          <ActivityIndicator size="small" color="#007AFF" />
+  const FriendItem = ({ item }: { item: User }) => {
+    const { status, displayText } = useUserPresence(item.uid);
+    
+    return (
+      <View style={styles.friendItem}>
+        {item.photoURL ? (
+          <Image source={{ uri: item.photoURL }} style={styles.friendAvatar} />
         ) : (
-          <Text style={styles.messageButtonText}>Message</Text>
+          <View style={styles.friendAvatarPlaceholder}>
+            <Text style={styles.friendAvatarText}>
+              {item.displayName?.charAt(0).toUpperCase() || '?'}
+            </Text>
+          </View>
         )}
-      </TouchableOpacity>
-    </View>
-  );
+        
+        <View style={styles.friendInfo}>
+          <Text style={styles.friendName}>{item.displayName}</Text>
+          <View style={styles.friendOnlineContainer}>
+            <OnlineIndicator userId={item.uid} size={10} />
+            <Text style={[styles.friendOnlineText, status === 'online' && styles.friendOnlineTextActive]}>
+              {displayText}
+            </Text>
+          </View>
+        </View>
+
+        <TouchableOpacity
+          style={styles.messageButton}
+          onPress={() => handleMessageFriend(item)}
+          disabled={messageLoading === item.uid}
+        >
+          {messageLoading === item.uid ? (
+            <ActivityIndicator size="small" color="#007AFF" />
+          ) : (
+            <Text style={styles.messageButtonText}>Message</Text>
+          )}
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
+  const renderFriendItem = ({ item }: { item: User }) => <FriendItem item={item} />;
 
   const renderConversationItem = ({ item }: { item: any }) => (
     <ConversationListItem 
@@ -263,6 +270,10 @@ const styles = StyleSheet.create({
     color: '#666',
     lineHeight: 13,
     paddingTop: 1,
+  },
+  friendOnlineTextActive: {
+    color: '#4CAF50',
+    fontWeight: '500',
   },
   messageButton: {
     backgroundColor: '#007AFF',

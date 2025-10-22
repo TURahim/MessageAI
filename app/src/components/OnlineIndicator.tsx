@@ -1,8 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { View, StyleSheet } from 'react-native';
-import { Timestamp } from 'firebase/firestore';
-import { subscribeToUserPresence } from '@/services/presenceService';
-import { PresenceStatus } from '@/types/index';
+import { useUserPresence } from '@/hooks/useUserPresence';
 
 interface Props {
   userId: string;
@@ -10,27 +8,7 @@ interface Props {
 }
 
 export default function OnlineIndicator({ userId, size = 12 }: Props) {
-  const [status, setStatus] = useState<PresenceStatus>('offline');
-
-  useEffect(() => {
-    if (!userId) return;
-    
-    const unsubscribe = subscribeToUserPresence(
-      userId,
-      (newStatus: PresenceStatus, lastSeen: Timestamp | null) => {
-        setStatus(newStatus);
-      },
-      (error) => {
-        // Silently ignore permission errors (happens after sign out)
-        if (error.message?.includes('Missing or insufficient permissions')) {
-          return;
-        }
-        console.warn('Error in OnlineIndicator:', error);
-      }
-    );
-
-    return () => unsubscribe();
-  }, [userId]);
+  const { status } = useUserPresence(userId);
 
   if (status === 'offline') {
     return null; // Don't show indicator for offline users
