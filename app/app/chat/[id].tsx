@@ -35,6 +35,7 @@ export default function ChatRoomScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const navigation = useNavigation();
   const [conversation, setConversation] = useState<Conversation | null>(null);
+  const [otherUserName, setOtherUserName] = useState<string>('');
   const [uploadingImages, setUploadingImages] = useState<Map<string, number>>(new Map()); // messageId -> progress
   const [optimisticMessages, setOptimisticMessages] = useState<Message[]>([]); // Local queue for offline messages
   const previousOnlineStatus = useRef<boolean>(true);
@@ -224,7 +225,7 @@ export default function ChatRoomScreen() {
     
     const unsubscribe = onSnapshot(
       conversationRef,
-      (snapshot) => {
+      async (snapshot) => {
         if (!snapshot.exists()) {
           // Conversation was deleted
           console.log('⚠️ Conversation deleted, navigating back');
@@ -240,7 +241,26 @@ export default function ChatRoomScreen() {
             { cancelable: false }
           );
         } else {
-          setConversation({ id: snapshot.id, ...snapshot.data() } as Conversation);
+          const conv = { id: snapshot.id, ...snapshot.data() } as Conversation;
+          setConversation(conv);
+          
+          // Fetch other user's name for direct chats
+          if (conv.type === 'direct') {
+            const otherUserId = conv.participants.find(uid => uid !== currentUserId);
+            if (otherUserId) {
+              try {
+                const userDoc = await getDoc(doc(db, 'users', otherUserId));
+                if (userDoc.exists()) {
+                  setOtherUserName(userDoc.data().displayName || 'User');
+                } else {
+                  setOtherUserName('User');
+                }
+              } catch (error) {
+                console.error('Error fetching other user name:', error);
+                setOtherUserName('User');
+              }
+            }
+          }
         }
       },
       (error) => {
@@ -249,7 +269,7 @@ export default function ChatRoomScreen() {
     );
 
     return () => unsubscribe();
-  }, [conversationId]);
+  }, [conversationId, currentUserId]);
 
   // Update header with conversation name and online indicator
   useEffect(() => {
@@ -259,14 +279,31 @@ export default function ChatRoomScreen() {
 
       if (conversation.type === 'direct') {
         const otherUserId = conversation.participants.find(uid => uid !== currentUserId);
-        title = conversation.name || 'Chat';
-        // For direct chats, show online indicator in header
+        
+        // Use fetched display name or fallback
+        title = otherUserName || 'Chat';
+        
+        // For direct chats, show online indicator and tappable name
         if (otherUserId) {
           headerRight = () => (
             <View style={{ marginRight: 15 }}>
               <OnlineIndicator userId={otherUserId} size={12} />
             </View>
           );
+          
+          // Make the name tappable to view profile
+          if (otherUserName) {
+            title = () => (
+              <TouchableOpacity
+                onPress={() => router.push(`/profile/${otherUserId}`)}
+                style={{ alignItems: 'center' }}
+              >
+                <Text style={{ fontSize: 17, fontWeight: '600', color: '#000' }}>
+                  {otherUserName}
+                </Text>
+              </TouchableOpacity>
+            );
+          }
         }
       } else {
         // For group chats, make the title tappable
@@ -304,7 +341,7 @@ export default function ChatRoomScreen() {
         headerBackTitle: 'Chats',
       });
     }
-  }, [conversation, currentUserId, navigation, conversationId]);
+  }, [conversation, otherUserName, currentUserId, navigation, conversationId]);
 
   // Trigger notifications for new messages (uses messages from useMessages hook)
   useEffect(() => {
