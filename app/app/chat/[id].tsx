@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useRef } from "react";
 import { View, Text, StyleSheet, KeyboardAvoidingView, Platform, Alert, TouchableOpacity } from "react-native";
 import { FlashList } from "@shopify/flash-list";
 import { useLocalSearchParams, useNavigation } from "expo-router";
@@ -25,9 +25,11 @@ import { usePresence } from "@/hooks/usePresence";
 import { useTypingIndicator } from "@/hooks/useTypingIndicator";
 import { useMarkAsRead } from "@/hooks/useMarkAsRead";
 import { useMessages } from "@/hooks/useMessages";
+import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { uploadImage } from "@/services/mediaService";
 import { showMessageNotification } from "@/services/notificationService";
 import { Conversation } from "@/types/index";
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function ChatRoomScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -35,9 +37,13 @@ export default function ChatRoomScreen() {
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [uploadingImages, setUploadingImages] = useState<Map<string, number>>(new Map()); // messageId -> progress
   const [optimisticMessages, setOptimisticMessages] = useState<Message[]>([]); // Local queue for offline messages
+  const previousOnlineStatus = useRef<boolean>(true);
   
   const conversationId = id || "demo-conversation-1";
   const currentUserId = auth.currentUser?.uid || "anonymous";
+
+  // Track network status for auto-retry
+  const { isOnline } = useNetworkStatus();
 
   // Track presence for this active conversation
   usePresence(conversationId);
@@ -50,6 +56,62 @@ export default function ChatRoomScreen() {
 
   // Load messages with pagination
   const { messages, loading, hasMore, loadMore, loadingMore } = useMessages(conversationId, currentUserId);
+
+  // Load optimistic messages from AsyncStorage on mount
+  useEffect(() => {
+    const loadOptimisticMessages = async () => {
+      try {
+        const key = `optimistic_messages_${conversationId}`;
+        const stored = await AsyncStorage.getItem(key);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          // Convert timestamp objects back from JSON
+          const messages = parsed.map((msg: any) => ({
+            ...msg,
+            clientTimestamp: msg.clientTimestamp ? Timestamp.fromMillis(msg.clientTimestamp) : Timestamp.now(),
+            serverTimestamp: msg.serverTimestamp ? Timestamp.fromMillis(msg.serverTimestamp) : null,
+          }));
+          setOptimisticMessages(messages);
+          console.log(`💾 Loaded ${messages.length} pending message(s) from storage:`, 
+            messages.map((m: Message) => `${m.text.substring(0, 10)}...`));
+        } else {
+          console.log('💾 No pending messages in storage for this conversation');
+        }
+      } catch (error) {
+        console.error('❌ Failed to load optimistic messages from storage:', error);
+      }
+    };
+
+    loadOptimisticMessages();
+  }, [conversationId]);
+
+  // Save optimistic messages to AsyncStorage whenever they change
+  useEffect(() => {
+    const saveOptimisticMessages = async () => {
+      try {
+        const key = `optimistic_messages_${conversationId}`;
+        if (optimisticMessages.length > 0) {
+          // Convert to plain objects for JSON storage
+          const toStore = optimisticMessages.map(msg => ({
+            ...msg,
+            clientTimestamp: msg.clientTimestamp.toMillis(),
+            serverTimestamp: msg.serverTimestamp?.toMillis() || null,
+          }));
+          await AsyncStorage.setItem(key, JSON.stringify(toStore));
+          const pendingCount = optimisticMessages.filter(m => m.status === 'sending').length;
+          console.log(`💾 Saved ${optimisticMessages.length} message(s) to storage (${pendingCount} pending)`);
+        } else {
+          // Clear storage if no pending messages
+          await AsyncStorage.removeItem(key);
+          console.log('💾 Cleared storage - all messages synced');
+        }
+      } catch (error) {
+        console.error('❌ Failed to save optimistic messages to storage:', error);
+      }
+    };
+
+    saveOptimisticMessages();
+  }, [optimisticMessages, conversationId]);
 
   // Merge Firestore messages with optimistic local messages
   const allMessages = useMemo(() => {
@@ -87,6 +149,67 @@ export default function ChatRoomScreen() {
       setOptimisticMessages(stillPending);
     }
   }, [messages, optimisticMessages]);
+
+  // Auto-retry pending messages when connection is restored (offline → online transition)
+  useEffect(() => {
+    const wasOffline = !previousOnlineStatus.current;
+    const isNowOnline = isOnline;
+    
+    // Update previous status first
+    previousOnlineStatus.current = isOnline;
+    
+    // Only retry when transitioning from offline to online
+    if (!wasOffline || !isNowOnline) return;
+    
+    // Get current pending messages at the time of reconnection
+    setOptimisticMessages(currentOptimistic => {
+      const pendingCount = currentOptimistic.filter(m => m.status === 'sending').length;
+      
+      if (pendingCount === 0) {
+        console.log('📡 Connection restored, but no pending messages to retry');
+        return currentOptimistic;
+      }
+      
+      console.log(`🔄 Connection restored! Retrying ${pendingCount} pending message(s)...`);
+      
+      // Retry messages asynchronously (don't block state update)
+      const retryPendingMessages = async () => {
+        for (const msg of currentOptimistic) {
+          if (msg.status === 'sending') {
+            console.log(`  🔄 Retrying message: ${msg.id.substring(0, 8)} - "${msg.text}"`);
+            
+            try {
+              const result = await sendMessageWithRetry(conversationId, msg);
+              
+              if (result.success) {
+                console.log(`  ✅ Retry successful: ${msg.id.substring(0, 8)}`);
+                // Will be cleaned up by the Firestore listener effect
+              } else if (!result.isOffline) {
+                console.warn(`  ⚠️ Retry failed: ${msg.id.substring(0, 8)}`);
+                // Update to failed status
+                setOptimisticMessages(prev =>
+                  prev.map(m => m.id === msg.id ? { ...m, status: "failed" as MessageStatus } : m)
+                );
+              } else {
+                console.log(`  📦 Still offline, message remains queued: ${msg.id.substring(0, 8)}`);
+              }
+            } catch (error) {
+              console.error(`  ❌ Error retrying: ${msg.id.substring(0, 8)}`, error);
+              setOptimisticMessages(prev =>
+                prev.map(m => m.id === msg.id ? { ...m, status: "failed" as MessageStatus } : m)
+              );
+            }
+            
+            // Small delay between retries to avoid overwhelming Firestore
+            await new Promise(resolve => setTimeout(resolve, 300));
+          }
+        }
+      };
+      
+      retryPendingMessages();
+      return currentOptimistic; // Return unchanged for now, retries will update as they complete
+    });
+  }, [isOnline, conversationId]); // Only isOnline and conversationId in deps
 
   // Set initial navigation options
   useEffect(() => {
@@ -388,6 +511,35 @@ export default function ChatRoomScreen() {
     }
   };
 
+  const handleRetryAll = async () => {
+    const pendingMessages = optimisticMessages.filter(m => m.status === 'sending');
+    if (pendingMessages.length === 0) return;
+
+    console.log(`🔄 Manual retry all: ${pendingMessages.length} pending message(s)`);
+    
+    for (const msg of pendingMessages) {
+      console.log(`  🔄 Retrying: ${msg.id.substring(0, 8)} - "${msg.text}"`);
+      
+      try {
+        const result = await sendMessageWithRetry(conversationId, msg);
+        
+        if (result.success) {
+          console.log(`  ✅ Success: ${msg.id.substring(0, 8)}`);
+        } else if (!result.isOffline) {
+          console.warn(`  ⚠️ Failed: ${msg.id.substring(0, 8)}`);
+          setOptimisticMessages(prev =>
+            prev.map(m => m.id === msg.id ? { ...m, status: "failed" as MessageStatus } : m)
+          );
+        }
+      } catch (error) {
+        console.error(`  ❌ Error: ${msg.id.substring(0, 8)}`, error);
+      }
+      
+      // Delay between retries
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+  };
+
   return (
     <KeyboardAvoidingView 
       style={styles.container}
@@ -395,6 +547,16 @@ export default function ChatRoomScreen() {
       keyboardVerticalOffset={90}
     >
       <ConnectionBanner />
+
+      {/* Show retry banner if there are pending messages and we're online */}
+      {isOnline && optimisticMessages.some(m => m.status === 'sending') && (
+        <TouchableOpacity style={styles.retryAllBanner} onPress={handleRetryAll}>
+          <Text style={styles.retryAllText}>
+            {optimisticMessages.filter(m => m.status === 'sending').length} message(s) waiting to send
+          </Text>
+          <Text style={styles.retryAllAction}>Tap to retry →</Text>
+        </TouchableOpacity>
+      )}
 
       {loading ? (
         <View style={styles.loadingContainer}>
@@ -519,5 +681,25 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#999',
     textAlign: 'center',
+  },
+  retryAllBanner: {
+    backgroundColor: '#FFD60A',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#FFCC00',
+  },
+  retryAllText: {
+    color: '#000',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  retryAllAction: {
+    color: '#007AFF',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });
