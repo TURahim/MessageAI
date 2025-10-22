@@ -42,18 +42,21 @@ export function useTypingIndicator(conversationId: string, userId: string | null
     // Clear any existing timeouts
     cleanup();
 
-    // Debounce: Set typing after 500ms
-    typingTimeoutRef.current = setTimeout(async () => {
-      if (!isTypingRef.current) {
+    // Set typing immediately if not already typing, or after short debounce
+    if (!isTypingRef.current) {
+      typingTimeoutRef.current = setTimeout(async () => {
         await setTyping(conversationId, userId, true);
         isTypingRef.current = true;
-      }
-    }, 500);
+      }, 200); // Reduced from 500ms to 200ms for faster response
+    } else {
+      // Already typing, just update the timestamp
+      await setTyping(conversationId, userId, true);
+    }
 
-    // Auto-clear after 3s of inactivity
+    // Auto-clear after 5s of inactivity (increased from 3s)
     clearTimeoutRef.current = setTimeout(async () => {
       await stopTyping();
-    }, 3000);
+    }, 5000);
   }, [userId, conversationId, cleanup, stopTyping]);
 
   // Cleanup on unmount

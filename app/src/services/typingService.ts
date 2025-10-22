@@ -43,17 +43,25 @@ export function subscribeToTyping(
         const data = snapshot.data();
         const typing = data.typing || {};
         const now = Timestamp.now().toMillis();
-        const threshold = 3000; // 3 seconds
+        const threshold = 6000; // 6 seconds (slightly more than 5s auto-clear for buffer)
         
-        // Filter users who are actively typing (within last 3s) and not current user
+        // Filter users who are actively typing (within last 6s) and not current user
         const typingUsers = Object.entries(typing)
           .filter(([uid, ts]) => {
             if (uid === currentUserId) return false; // Don't show own typing
-            if (!ts || typeof ts.toMillis !== 'function') return false;
-            return (now - (ts as Timestamp).toMillis()) < threshold;
+            if (!ts || typeof (ts as any).toMillis !== 'function') return false;
+            const elapsed = now - (ts as Timestamp).toMillis();
+            
+            // Debug log for troubleshooting
+            if (uid !== currentUserId) {
+              console.log(`  👤 User ${uid.substring(0, 8)}: elapsed ${elapsed}ms (threshold: ${threshold}ms)`);
+            }
+            
+            return elapsed < threshold && elapsed >= 0;
           })
           .map(([uid]) => uid);
         
+        console.log(`👁️ Typing check: ${typingUsers.length} users typing`);
         onUpdate(typingUsers);
       }
     },

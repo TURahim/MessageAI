@@ -69,8 +69,8 @@ function getAuthErrorMessage(code: string): FriendlyError {
     
     case 'auth/email-already-in-use':
       return {
-        title: 'Email Already Used',
-        message: 'An account with this email already exists.',
+        title: 'Email Already Registered',
+        message: 'An account with this email already exists. Please log in instead or use a different email.',
         retryable: false,
       };
     

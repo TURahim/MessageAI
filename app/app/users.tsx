@@ -1,74 +1,78 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator, Image } from 'react-native';
-import { router } from 'expo-router';
+import React, { useEffect, useState, useRef } from 'react';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator, Image, TextInput } from 'react-native';
+import { router, useNavigation } from 'expo-router';
 import { collection, query, onSnapshot, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/hooks/useAuth';
-import { getOrCreateDirectConversation } from '@/services/conversationService';
-
-interface User {
-  uid: string;
-  displayName: string;
-  email: string;
-  photoURL?: string;
-  presence?: {
-    status: 'online' | 'offline';
-    lastSeen: any;
-  };
-}
+import { getSuggestedContacts } from '@/services/friendService';
+import { User } from '@/types/index';
 
 export default function UsersScreen() {
+  const navigation = useNavigation();
   const { user: currentUser } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
+  const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const navigationInProgress = useRef(false);
 
   useEffect(() => {
-    if (!currentUser) return;
-
-    // Subscribe to all users except current user
-    const q = query(
-      collection(db, 'users'),
-      where('uid', '!=', currentUser.uid)
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const usersList: User[] = [];
-      snapshot.forEach((doc) => {
-        usersList.push({ uid: doc.id, ...doc.data() } as User);
-      });
-      setUsers(usersList);
-      setLoading(false);
+    navigation.setOptions({
+      title: 'Suggested Contacts',
     });
+  }, [navigation]);
 
-    return () => unsubscribe();
+  useEffect(() => {
+    loadSuggestedContacts();
   }, [currentUser]);
 
-  const handleUserPress = async (selectedUser: User) => {
-    // GUARD: Check authentication
-    if (!currentUser) {
-      console.error('❌ No current user - not authenticated');
+  useEffect(() => {
+    // Filter users based on search query
+    if (searchQuery.trim() === '') {
+      setFilteredUsers(users);
+    } else {
+      const filtered = users.filter((user) =>
+        user.displayName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        user.email?.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+      setFilteredUsers(filtered);
+    }
+  }, [searchQuery, users]);
+
+  const loadSuggestedContacts = async () => {
+    if (!currentUser) return;
+
+    setLoading(true);
+    try {
+      const contacts = await getSuggestedContacts(currentUser.uid);
+      setUsers(contacts);
+      setFilteredUsers(contacts);
+    } catch (error) {
+      console.error('Error loading suggested contacts:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUserPress = (selectedUser: User) => {
+    // Guard against double-tap / rapid taps
+    if (navigationInProgress.current) {
+      console.log('⚠️ Navigation already in progress, ignoring tap');
       return;
     }
 
-    console.log('👤 handleUserPress - Current user:', currentUser.uid);
-    console.log('👤 handleUserPress - Selected user:', selectedUser.uid);
+    console.log('👤 Opening profile for user:', selectedUser.uid);
 
-    try {
-      // Get or create conversation
-      const conversationId = await getOrCreateDirectConversation(
-        currentUser.uid,
-        selectedUser.uid
-      );
+    // Set navigation flag
+    navigationInProgress.current = true;
 
-      console.log('✅ Got conversation ID:', conversationId);
+    // Navigate to profile screen
+    router.push(`/profile/${selectedUser.uid}`);
 
-      // Navigate to chat
-      router.push(`/chat/${conversationId}`);
-    } catch (error: any) {
-      console.error('❌ Error in handleUserPress:', error);
-      console.error('Error code:', error.code);
-      console.error('Error message:', error.message);
-    }
+    // Reset flag after navigation
+    setTimeout(() => {
+      navigationInProgress.current = false;
+    }, 1000);
   };
 
   const renderUser = ({ item }: { item: User }) => (
@@ -107,13 +111,27 @@ export default function UsersScreen() {
 
   return (
     <View style={styles.container}>
+      {/* Search Bar */}
+      <View style={styles.searchContainer}>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search contacts..."
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          autoCapitalize="none"
+          placeholderTextColor="#999"
+        />
+      </View>
+
       <FlatList
-        data={users}
+        data={filteredUsers}
         renderItem={renderUser}
         keyExtractor={(item) => item.uid}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No users found</Text>
+            <Text style={styles.emptyText}>
+              {searchQuery ? 'No contacts match your search' : 'No suggested contacts'}
+            </Text>
           </View>
         }
       />
@@ -130,6 +148,21 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  searchContainer: {
+    padding: 10,
+    backgroundColor: '#f5f5f5',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  searchInput: {
+    height: 40,
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    paddingHorizontal: 15,
+    fontSize: 16,
+    borderWidth: 1,
+    borderColor: '#ddd',
   },
   userItem: {
     flexDirection: 'row',

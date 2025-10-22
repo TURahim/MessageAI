@@ -40,7 +40,7 @@ describe('TypingIndicator', () => {
     const { subscribeToTyping } = require('@/services/typingService');
     
     // Mock to return typing users
-    subscribeToTyping.mockImplementation((conversationId, currentUserId, onUpdate) => {
+    subscribeToTyping.mockImplementation((conversationId: string, currentUserId: string, onUpdate: (users: string[]) => void) => {
       onUpdate(['user2']); // user2 is typing
       return jest.fn();
     });

@@ -36,8 +36,12 @@ export interface UserPresence {
 export interface User {
   uid: string;
   displayName: string;
+  email?: string;
   photoURL: string | null;
+  bio?: string; // Short user description/status
+  friends: string[]; // Array of friend UIDs
   presence: UserPresence;
+  createdAt?: Timestamp;
 }
 
 // Conversation types

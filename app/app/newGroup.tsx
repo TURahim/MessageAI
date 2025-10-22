@@ -41,7 +41,10 @@ export default function NewGroupScreen() {
           fetchedUsers.push({
             uid: doc.id,
             displayName: userData.displayName,
+            email: userData.email,
             photoURL: userData.photoURL || null,
+            bio: userData.bio || '',
+            friends: userData.friends || [],
             presence: userData.presence,
           });
         }
@@ -110,15 +113,13 @@ export default function NewGroupScreen() {
       
       console.log('✅ Group created with ID:', conversationId);
 
-      Alert.alert('Success', 'Group created successfully!', [
-        {
-          text: 'OK',
-          onPress: () => {
-            router.back();
-            router.push(`/chat/${conversationId}`);
-          },
-        },
-      ]);
+      // Navigate immediately, no double-tap risk since button is disabled during creation
+      router.back();
+      
+      // Small delay to let the modal dismiss animation complete
+      setTimeout(() => {
+        router.push(`/chat/${conversationId}`);
+      }, 100);
     } catch (error: any) {
       console.error('Error creating group:', error);
       Alert.alert('Error', error.message || 'Failed to create group. Please try again.');

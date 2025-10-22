@@ -24,7 +24,7 @@ export default function ConnectionBanner() {
   return (
     <View style={styles.banner} testID="offline-banner">
       <Text style={styles.text}>{getMessage()}</Text>
-      <Text style={styles.subText}>Messages will send when connection is restored</Text>
+      <Text style={styles.subText}>Messages are queued and will sync automatically</Text>
     </View>
   );
 }

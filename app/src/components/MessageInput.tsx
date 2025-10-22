@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { View, TextInput, TouchableOpacity, StyleSheet, Text as RNText, Alert } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
+import { View, TextInput, TouchableOpacity, StyleSheet, Text as RNText } from 'react-native';
+import AttachmentModal from './AttachmentModal';
 
 interface Props {
   onSend: (text: string) => void;
@@ -20,12 +20,13 @@ export default function MessageInput({
   disabled = false
 }: Props) {
   const [text, setText] = useState('');
+  const [showAttachmentModal, setShowAttachmentModal] = useState(false);
 
   const handleChangeText = (newText: string) => {
     setText(newText);
     
-    // Trigger typing event when user types
-    if (newText.length > text.length && onTyping) {
+    // Trigger typing event on every text change (hook handles debouncing)
+    if (newText.length > 0 && onTyping) {
       onTyping();
     }
   };
@@ -42,47 +43,21 @@ export default function MessageInput({
     }
   };
 
-  const handlePickImage = async () => {
-    if (!onSendImage) {
-      Alert.alert('Not Available', 'Image sending is not available');
-      return;
-    }
-
-    try {
-      // Request permissions
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      
-      if (status !== 'granted') {
-        Alert.alert('Permission Denied', 'We need camera roll permissions to send images');
-        return;
-      }
-
-      // Pick image
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        quality: 1, // We'll compress it ourselves
-      });
-
-      if (!result.canceled && result.assets[0]) {
-        onSendImage(result.assets[0].uri);
-      }
-    } catch (error: any) {
-      console.error('Image picker error:', error);
-      Alert.alert('Error', 'Failed to pick image. Please try again.');
-    }
+  const handleOpenAttachments = () => {
+    setShowAttachmentModal(true);
   };
 
   return (
     <View style={styles.container}>
-      {/* Image picker button */}
+      {/* Modern + attachment button */}
       {onSendImage && (
         <TouchableOpacity
-          style={styles.imageButton}
-          onPress={handlePickImage}
+          style={styles.attachmentButton}
+          onPress={handleOpenAttachments}
           disabled={disabled}
+          activeOpacity={0.7}
         >
-          <RNText style={styles.imageButtonText}>📷</RNText>
+          <RNText style={styles.attachmentButtonText}>+</RNText>
         </TouchableOpacity>
       )}
 
@@ -95,6 +70,7 @@ export default function MessageInput({
         maxLength={1000}
         placeholderTextColor="#999"
         editable={!disabled}
+        textAlignVertical="center"
       />
       <TouchableOpacity
         style={[styles.sendButton, (!text.trim() || disabled) && styles.sendButtonDisabled]}
@@ -103,6 +79,13 @@ export default function MessageInput({
       >
         <RNText style={styles.sendButtonText}>Send</RNText>
       </TouchableOpacity>
+
+      {/* Attachment modal */}
+      <AttachmentModal
+        visible={showAttachmentModal}
+        onClose={() => setShowAttachmentModal(false)}
+        onSendImage={onSendImage}
+      />
     </View>
   );
 }
@@ -124,10 +107,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#ddd',
     paddingHorizontal: 15,
-    paddingVertical: 10,
+    paddingTop: 9,
+    paddingBottom: 11,
     marginRight: 8,
     fontSize: 16,
     backgroundColor: '#f9f9f9',
+    lineHeight: 20,
   },
   sendButton: {
     backgroundColor: '#007AFF',
@@ -146,17 +131,25 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
   },
-  imageButton: {
+  attachmentButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#f0f0f0',
+    backgroundColor: '#007AFF',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
   },
-  imageButtonText: {
-    fontSize: 24,
+  attachmentButtonText: {
+    fontSize: 28,
+    fontWeight: '300',
+    color: '#fff',
+    marginTop: -2, // Optical alignment for +
   },
 });
 

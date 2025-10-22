@@ -34,6 +34,8 @@ export async function signUpWithEmail(
     email: user.email,
     displayName,
     photoURL: null,
+    bio: '',
+    friends: [],
     presence: {
       status: 'offline',
       lastSeen: serverTimestamp(),
@@ -69,11 +71,14 @@ async function ensureUserDocument(user: any) {
     // Create new document
     await setDoc(userRef, {
       ...userData,
+      bio: '',
+      friends: [],
       createdAt: serverTimestamp(),
     });
     console.log('✅ Created user document for:', user.uid);
   } else {
     // Update existing document (in case email/displayName/photo changed)
+    // Don't overwrite bio or friends if they already exist
     await setDoc(userRef, userData, { merge: true });
     console.log('✅ Updated user document for:', user.uid);
   }

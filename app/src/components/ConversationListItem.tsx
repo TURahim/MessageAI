@@ -1,10 +1,11 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
+import React, { useEffect, useState, useRef } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Image, Alert } from 'react-native';
 import { router } from 'expo-router';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Conversation, User } from '@/types/index';
 import OnlineIndicator from './OnlineIndicator';
+import { deleteConversation } from '@/services/conversationService';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 
@@ -17,6 +18,8 @@ interface Props {
 
 export default function ConversationListItem({ conversation, currentUserId }: Props) {
   const [otherUser, setOtherUser] = useState<User | null>(null);
+  const navigationInProgress = useRef(false);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     // Get other user's info for direct conversations
@@ -27,6 +30,15 @@ export default function ConversationListItem({ conversation, currentUserId }: Pr
       }
     }
   }, [conversation, currentUserId]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
 
   const fetchUserInfo = async (userId: string) => {
     try {
@@ -75,7 +87,55 @@ export default function ConversationListItem({ conversation, currentUserId }: Pr
   };
 
   const handlePress = () => {
+    // Guard against double-tap / rapid taps
+    if (navigationInProgress.current) {
+      console.log('⚠️ Navigation already in progress, ignoring tap');
+      return;
+    }
+
+    navigationInProgress.current = true;
     router.push(`/chat/${conversation.id}`);
+
+    // Reset flag after navigation animation completes (typical duration ~300-500ms)
+    // Clear any existing timeout first
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+    
+    timeoutRef.current = setTimeout(() => {
+      navigationInProgress.current = false;
+      timeoutRef.current = null;
+    }, 1000);
+  };
+
+  const handleLongPress = () => {
+    const conversationName = getDisplayName();
+    
+    Alert.alert(
+      'Delete Conversation',
+      `Are you sure you want to delete "${conversationName}"? This will permanently delete all messages.`,
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: handleDelete,
+        },
+      ]
+    );
+  };
+
+  const handleDelete = async () => {
+    try {
+      await deleteConversation(conversation.id);
+      console.log('✅ Conversation deleted successfully');
+    } catch (error: any) {
+      console.error('❌ Error deleting conversation:', error);
+      Alert.alert('Delete Failed', error.message || 'Failed to delete conversation. Please try again.');
+    }
   };
 
   const getOtherUserId = () => {
@@ -88,7 +148,12 @@ export default function ConversationListItem({ conversation, currentUserId }: Pr
   const otherUserId = getOtherUserId();
 
   return (
-    <TouchableOpacity style={styles.container} onPress={handlePress}>
+    <TouchableOpacity 
+      style={styles.container} 
+      onPress={handlePress}
+      onLongPress={handleLongPress}
+      delayLongPress={500}
+    >
       <View style={styles.avatarContainer}>
         {/* Avatar */}
         {otherUser?.photoURL ? (

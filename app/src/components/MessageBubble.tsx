@@ -1,7 +1,9 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useEffect, useState, useRef } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
 import { Message } from '@/types/index';
 import ImageMessage from './ImageMessage';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import dayjs from 'dayjs';
 
 interface Props {
@@ -21,6 +23,54 @@ export default function MessageBubble({
   totalParticipants = 2,
   onRetry 
 }: Props) {
+  const [senderName, setSenderName] = useState<string>('');
+  const sendingOpacity = useRef(new Animated.Value(1)).current;
+
+  // Fetch sender's display name for group chats
+  useEffect(() => {
+    if (showSenderName && !isOwn && conversationType === 'group') {
+      const fetchSenderName = async () => {
+        try {
+          const userDoc = await getDoc(doc(db, 'users', message.senderId));
+          if (userDoc.exists()) {
+            setSenderName(userDoc.data().displayName || 'Unknown User');
+          } else {
+            setSenderName('Unknown User');
+          }
+        } catch (error) {
+          console.error('Error fetching sender name:', error);
+          setSenderName('Unknown User');
+        }
+      };
+
+      fetchSenderName();
+    }
+  }, [message.senderId, showSenderName, isOwn, conversationType]);
+
+  // Pulse animation for "Sending..." status
+  useEffect(() => {
+    if (message.status === 'sending') {
+      const animation = Animated.loop(
+        Animated.sequence([
+          Animated.timing(sendingOpacity, {
+            toValue: 0.4,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+          Animated.timing(sendingOpacity, {
+            toValue: 1,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+        ])
+      );
+      animation.start();
+      return () => animation.stop();
+    } else {
+      sendingOpacity.setValue(1);
+    }
+  }, [message.status, sendingOpacity]);
+
   const getTimestamp = () => {
     const timestamp = message.serverTimestamp || message.clientTimestamp;
     if (!timestamp) return '';
@@ -29,17 +79,25 @@ export default function MessageBubble({
     return dayjs(date).format('h:mm A');
   };
 
-  const getStatusIcon = () => {
+  const getStatusDisplay = () => {
     if (!isOwn) return null;
 
-    // Failed status takes precedence
+    // Failed status
     if (message.status === 'failed') {
-      return '❌';
+      return {
+        text: 'Failed',
+        color: '#FF3B30',
+        icon: null,
+      };
     }
 
     // Sending status
     if (message.status === 'sending') {
-      return '🕐';
+      return {
+        text: 'Sending...',
+        color: 'rgba(255, 255, 255, 0.7)',
+        icon: null,
+      };
     }
 
     // Read receipts
@@ -47,17 +105,34 @@ export default function MessageBubble({
     
     if (conversationType === 'direct') {
       // For direct chats: ✓ sent, ✓✓ read
-      return readCount > 1 ? '✓✓' : '✓';
+      const isRead = readCount > 1;
+      return {
+        text: null,
+        color: isRead ? '#4CD964' : 'rgba(255, 255, 255, 0.7)',
+        icon: isRead ? '✓✓' : '✓',
+      };
     } else if (conversationType === 'group') {
-      // For groups: show count if anyone read it (excluding sender)
+      // For groups: show checkmark with read count
       const othersReadCount = readCount - 1; // Exclude sender
       if (othersReadCount > 0) {
-        return `✓ ${othersReadCount}/${totalParticipants - 1}`;
+        return {
+          text: null,
+          color: '#4CD964',
+          icon: `✓ ${othersReadCount}`,
+        };
       }
-      return '✓';
+      return {
+        text: null,
+        color: 'rgba(255, 255, 255, 0.7)',
+        icon: '✓',
+      };
     }
 
-    return '✓';
+    return {
+      text: null,
+      color: 'rgba(255, 255, 255, 0.7)',
+      icon: '✓',
+    };
   };
 
   // Determine if this is an image message
@@ -66,8 +141,8 @@ export default function MessageBubble({
   return (
     <View style={[styles.container, isOwn ? styles.ownContainer : styles.otherContainer]}>
       <View style={[styles.bubble, isOwn ? styles.ownBubble : styles.otherBubble, message.status === 'failed' && styles.failedBubble]}>
-        {showSenderName && !isOwn && (
-          <Text style={styles.senderName}>{message.senderId}</Text>
+        {showSenderName && !isOwn && conversationType === 'group' && (
+          <Text style={styles.senderName}>{senderName || 'Loading...'}</Text>
         )}
         
         {/* Image message */}
@@ -97,9 +172,33 @@ export default function MessageBubble({
           <Text style={[styles.timestamp, isOwn ? styles.ownTimestamp : styles.otherTimestamp]}>
             {getTimestamp()}
           </Text>
-          {getStatusIcon() && (
-            <Text style={styles.status}> {getStatusIcon()}</Text>
-          )}
+          {(() => {
+            const statusDisplay = getStatusDisplay();
+            if (!statusDisplay) return null;
+            
+            const isSending = message.status === 'sending';
+            
+            return (
+              <View style={styles.statusContainer}>
+                {statusDisplay.text && (
+                  <Animated.Text 
+                    style={[
+                      styles.statusText, 
+                      { color: statusDisplay.color },
+                      isSending && { opacity: sendingOpacity }
+                    ]}
+                  >
+                    {statusDisplay.text}
+                  </Animated.Text>
+                )}
+                {statusDisplay.icon && (
+                  <Text style={[styles.statusIcon, { color: statusDisplay.color }]}>
+                    {statusDisplay.icon}
+                  </Text>
+                )}
+              </View>
+            );
+          })()}
         </View>
         
         {/* Retry button for failed messages */}
@@ -143,9 +242,9 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 4,
   },
   senderName: {
-    fontSize: 12,
-    color: '#666',
-    marginBottom: 2,
+    fontSize: 13,
+    color: '#007AFF',
+    marginBottom: 4,
     fontWeight: '600',
   },
   text: {
@@ -162,6 +261,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: 4,
+    gap: 6,
   },
   timestamp: {
     fontSize: 11,
@@ -172,26 +272,39 @@ const styles = StyleSheet.create({
   otherTimestamp: {
     color: '#666',
   },
-  status: {
+  statusContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  statusText: {
     fontSize: 11,
+    fontWeight: '500',
+  },
+  statusIcon: {
+    fontSize: 12,
+    fontWeight: '600',
   },
   failedBubble: {
-    backgroundColor: '#ff6b6b',
+    backgroundColor: '#FF3B30',
     borderWidth: 1,
-    borderColor: '#ff0000',
+    borderColor: '#FF0000',
   },
   retryButton: {
     marginTop: 8,
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
-    borderRadius: 4,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
     alignSelf: 'flex-start',
   },
   retryText: {
     color: '#fff',
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
+    letterSpacing: 0.3,
   },
   imageContainer: {
     maxWidth: '100%',

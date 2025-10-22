@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { router } from 'expo-router';
-import { signInWithEmail, signInWithGoogle, useGoogleAuth } from '@/services/authService';
+import { signInWithEmail } from '@/services/authService';
 import ErrorBanner from '@/components/ErrorBanner';
 import { getFirebaseErrorMessage } from '@/utils/errorMessages';
 
@@ -10,14 +10,6 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
-  const { request, response, promptAsync } = useGoogleAuth();
-
-  useEffect(() => {
-    if (response?.type === 'success' && response.authentication?.idToken) {
-      handleGoogleSignIn(response.authentication.idToken);
-    }
-  }, [response]);
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -35,35 +27,6 @@ export default function LoginScreen() {
       setError(friendlyError.message);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleGoogleSignIn = async (idToken: string) => {
-    setError(null);
-    setLoading(true);
-    try {
-      await signInWithGoogle(idToken);
-      router.replace('/(tabs)');
-    } catch (err: any) {
-      const friendlyError = getFirebaseErrorMessage(err);
-      setError(friendlyError.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleGooglePress = async () => {
-    if (!request) {
-      setError('Google Sign-In is not configured. Please use email/password login.');
-      return;
-    }
-
-    try {
-      setError(null);
-      await promptAsync();
-    } catch (err: any) {
-      const friendlyError = getFirebaseErrorMessage(err);
-      setError(friendlyError.message);
     }
   };
 
@@ -110,20 +73,6 @@ export default function LoginScreen() {
         disabled={loading}
       >
         <Text style={styles.loginButtonText}>Login</Text>
-      </TouchableOpacity>
-
-      <View style={styles.divider}>
-        <View style={styles.dividerLine} />
-        <Text style={styles.dividerText}>OR</Text>
-        <View style={styles.dividerLine} />
-      </View>
-
-      <TouchableOpacity 
-        style={styles.googleButton} 
-        onPress={handleGooglePress}
-        disabled={!request || loading}
-      >
-        <Text style={styles.googleButtonText}>🔐 Continue with Google</Text>
       </TouchableOpacity>
 
       <TouchableOpacity 
@@ -183,38 +132,8 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 25,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: '#ddd',
-  },
-  dividerText: {
-    marginHorizontal: 10,
-    color: '#666',
-    fontSize: 14,
-  },
-  googleButton: {
-    backgroundColor: '#fff',
-    height: 50,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 15,
-  },
-  googleButtonText: {
-    color: '#000',
-    fontSize: 16,
-    fontWeight: '500',
-  },
   signupButton: {
-    marginTop: 10,
+    marginTop: 20,
     padding: 10,
   },
   signupButtonText: {

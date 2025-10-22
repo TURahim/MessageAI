@@ -22,6 +22,7 @@ export default function TypingIndicator({ conversationId, currentUserId }: Props
       conversationId,
       currentUserId,
       (userIds) => {
+        console.log('💬 TypingIndicator received update:', userIds.length, 'users');
         setTypingUserIds(userIds);
       },
       (error) => {
@@ -40,10 +41,12 @@ export default function TypingIndicator({ conversationId, currentUserId }: Props
   useEffect(() => {
     const fetchUserNames = async () => {
       if (typingUserIds.length === 0) {
+        console.log('💬 Clearing typing indicator (no users)');
         setTypingUserNames([]);
         return;
       }
 
+      console.log('💬 Fetching names for', typingUserIds.length, 'typing users');
       const names = await Promise.all(
         typingUserIds.map(async (uid) => {
           try {
@@ -59,6 +62,7 @@ export default function TypingIndicator({ conversationId, currentUserId }: Props
         })
       );
 
+      console.log('💬 Showing typing indicator:', names);
       setTypingUserNames(names);
     };
 

@@ -16,7 +16,7 @@ describe('Storage Security Rules', () => {
     });
     
     it('should allow users to upload their own profile photo', async () => {
-      const alice = testEnv.authenticatedContext('alice', { uid: 'alice' }).storage();
+      const alice = testEnv.authenticatedContext('alice').storage();
       
       // This should succeed
       const storageRef = ref(alice, 'profilePhotos/alice.jpg');
@@ -28,7 +28,7 @@ describe('Storage Security Rules', () => {
 
   describeIfEmulator('Message Media', () => {
     it('should allow uploads to conversation message paths for participants', async () => {
-      const alice = testEnv.authenticatedContext('alice', { uid: 'alice' }).storage();
+      const alice = testEnv.authenticatedContext('alice').storage();
       
       // Seed conversation with alice as participant
       await testEnv.withSecurityRulesDisabled(async (context) => {

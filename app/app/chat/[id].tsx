@@ -1,9 +1,9 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { View, Text, StyleSheet, KeyboardAvoidingView, Platform, Alert, TouchableOpacity } from "react-native";
 import { FlashList } from "@shopify/flash-list";
 import { useLocalSearchParams, useNavigation } from "expo-router";
 import { newMessageId } from "@/utils/messageId";
-import { Message } from "@/types/message";
+import { Message, MessageStatus } from "@/types/message";
 import {
   sendMessage,
   sendMessageWithRetry,
@@ -12,7 +12,8 @@ import {
   updateMessageStatus,
 } from "@/lib/messageService";
 import { auth, db } from "@/lib/firebase";
-import { Timestamp, doc, getDoc } from "firebase/firestore";
+import { Timestamp, doc, getDoc, onSnapshot } from "firebase/firestore";
+import { router } from "expo-router";
 import MessageBubble from "@/components/MessageBubble";
 import MessageInput from "@/components/MessageInput";
 import ConnectionBanner from "@/components/ConnectionBanner";
@@ -33,6 +34,7 @@ export default function ChatRoomScreen() {
   const navigation = useNavigation();
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [uploadingImages, setUploadingImages] = useState<Map<string, number>>(new Map()); // messageId -> progress
+  const [optimisticMessages, setOptimisticMessages] = useState<Message[]>([]); // Local queue for offline messages
   
   const conversationId = id || "demo-conversation-1";
   const currentUserId = auth.currentUser?.uid || "anonymous";
@@ -49,30 +51,92 @@ export default function ChatRoomScreen() {
   // Load messages with pagination
   const { messages, loading, hasMore, loadMore, loadingMore } = useMessages(conversationId, currentUserId);
 
-  // Fetch conversation details
-  useEffect(() => {
-    const fetchConversation = async () => {
-      try {
-        const convDoc = await getDoc(doc(db, 'conversations', conversationId));
-        if (convDoc.exists()) {
-          setConversation({ id: convDoc.id, ...convDoc.data() } as Conversation);
-        }
-      } catch (error) {
-        console.error('Error fetching conversation:', error);
-      }
-    };
+  // Merge Firestore messages with optimistic local messages
+  const allMessages = useMemo(() => {
+    // Get IDs of messages already in Firestore
+    const firestoreIds = new Set(messages.map(m => m.id));
+    
+    // Filter out optimistic messages that are now in Firestore
+    const pendingOptimistic = optimisticMessages.filter(m => !firestoreIds.has(m.id));
+    
+    // Merge: Firestore messages + pending optimistic messages
+    const merged = [...messages, ...pendingOptimistic];
+    
+    // Sort by timestamp (clientTimestamp for optimistic, serverTimestamp for synced)
+    merged.sort((a, b) => {
+      const aTime = (a.serverTimestamp || a.clientTimestamp).toMillis();
+      const bTime = (b.serverTimestamp || b.clientTimestamp).toMillis();
+      return bTime - aTime; // Newest first (descending)
+    });
+    
+    if (pendingOptimistic.length > 0) {
+      console.log(`📦 Showing ${pendingOptimistic.length} optimistic message(s) in UI`);
+    }
+    
+    return merged;
+  }, [messages, optimisticMessages]);
 
-    fetchConversation();
+  // Clean up optimistic messages when they appear in Firestore
+  useEffect(() => {
+    const firestoreIds = new Set(messages.map(m => m.id));
+    const stillPending = optimisticMessages.filter(m => !firestoreIds.has(m.id));
+    
+    if (stillPending.length !== optimisticMessages.length) {
+      const syncedCount = optimisticMessages.length - stillPending.length;
+      console.log(`✅ ${syncedCount} optimistic message(s) synced to Firestore, removing from local queue`);
+      setOptimisticMessages(stillPending);
+    }
+  }, [messages, optimisticMessages]);
+
+  // Set initial navigation options
+  useEffect(() => {
+    navigation.setOptions({
+      headerBackTitle: 'Chats',
+    });
+  }, [navigation]);
+
+  // Listen to conversation changes (including deletion)
+  useEffect(() => {
+    const conversationRef = doc(db, 'conversations', conversationId);
+    
+    const unsubscribe = onSnapshot(
+      conversationRef,
+      (snapshot) => {
+        if (!snapshot.exists()) {
+          // Conversation was deleted
+          console.log('⚠️ Conversation deleted, navigating back');
+          Alert.alert(
+            'Conversation Deleted',
+            'This conversation has been deleted.',
+            [
+              {
+                text: 'OK',
+                onPress: () => router.back(),
+              },
+            ],
+            { cancelable: false }
+          );
+        } else {
+          setConversation({ id: snapshot.id, ...snapshot.data() } as Conversation);
+        }
+      },
+      (error) => {
+        console.error('Error listening to conversation:', error);
+      }
+    );
+
+    return () => unsubscribe();
   }, [conversationId]);
 
   // Update header with conversation name and online indicator
   useEffect(() => {
     if (conversation) {
-      let title = 'Chat';
+      let title: string | (() => React.ReactElement) = 'Chat';
       let headerRight;
 
       if (conversation.type === 'direct') {
         const otherUserId = conversation.participants.find(uid => uid !== currentUserId);
+        title = conversation.name || 'Chat';
         // For direct chats, show online indicator in header
         if (otherUserId) {
           headerRight = () => (
@@ -82,15 +146,42 @@ export default function ChatRoomScreen() {
           );
         }
       } else {
-        title = conversation.name || 'Group Chat';
+        // For group chats, make the title tappable
+        const groupName = conversation.name || 'Group Chat';
+        const memberCount = conversation.participants?.length || 0;
+        
+        title = () => (
+          <TouchableOpacity
+            onPress={() => router.push(`/groupInfo/${conversationId}`)}
+            style={{ alignItems: 'center' }}
+          >
+            <Text style={{ fontSize: 17, fontWeight: '600', color: '#000' }}>
+              {groupName}
+            </Text>
+            <Text style={{ fontSize: 12, color: '#666' }}>
+              {memberCount} {memberCount === 1 ? 'member' : 'members'}
+            </Text>
+          </TouchableOpacity>
+        );
+
+        // Add info icon to header right for groups
+        headerRight = () => (
+          <TouchableOpacity
+            onPress={() => router.push(`/groupInfo/${conversationId}`)}
+            style={{ marginRight: 15 }}
+          >
+            <Text style={{ fontSize: 24, color: '#007AFF' }}>ⓘ</Text>
+          </TouchableOpacity>
+        );
       }
 
       navigation.setOptions({
-        title,
+        headerTitle: title,
         headerRight,
+        headerBackTitle: 'Chats',
       });
     }
-  }, [conversation, currentUserId, navigation]);
+  }, [conversation, currentUserId, navigation, conversationId]);
 
   // Trigger notifications for new messages (uses messages from useMessages hook)
   useEffect(() => {
@@ -147,12 +238,26 @@ export default function ChatRoomScreen() {
       readCount: 1,
     };
 
-    // Optimistic: Add to UI immediately
-    // Note: With pagination, we manage messages in useMessages hook
-    // The real-time listener will pick up our optimistic message
+    // Add to optimistic state IMMEDIATELY (shows in UI right away)
+    setOptimisticMessages(prev => [...prev, newMessage]);
+    console.log('📤 Added message to optimistic queue:', messageId.substring(0, 8));
 
-    await sendMessageWithRetry(conversationId, newMessage);
-    // Real-time listener will update the message status
+    // Send to Firestore (will queue if offline)
+    const result = await sendMessageWithRetry(conversationId, newMessage);
+    
+    if (result.isOffline) {
+      console.log('📦 Message queued offline by Firestore - will auto-sync when connection restored');
+      console.log('   Message visible in UI via optimistic state');
+    } else if (result.success) {
+      console.log('✅ Message sent successfully - will appear via Firestore listener');
+      // Message will be removed from optimistic state when Firestore listener fires
+    } else {
+      console.warn('⚠️ Message send failed after retries');
+      // Update optimistic message to "failed" status
+      setOptimisticMessages(prev => 
+        prev.map(m => m.id === messageId ? { ...m, status: "failed" as MessageStatus } : m)
+      );
+    }
   };
 
   const handleSendImage = async (imageUri: string) => {
@@ -181,8 +286,10 @@ export default function ChatRoomScreen() {
       readCount: 1,
     };
 
-    // Add to UI optimistically (real-time listener will pick it up)
+    // Add to optimistic state IMMEDIATELY (shows in UI right away)
+    setOptimisticMessages(prev => [...prev, newMessage]);
     setUploadingImages(new Map(uploadingImages.set(messageId, 0)));
+    console.log('📤 Added image message to optimistic queue:', messageId.substring(0, 8));
 
     try {
       // Upload image to Storage
@@ -210,20 +317,40 @@ export default function ChatRoomScreen() {
 
       // Real-time listener will update with the uploaded image
 
+      // Update optimistic message with uploaded image URL
+      setOptimisticMessages(prev =>
+        prev.map(m => m.id === messageId ? messageWithImage : m)
+      );
+
       // Send to Firestore
       const result = await sendMessageWithRetry(conversationId, messageWithImage);
+      
+      if (result.isOffline) {
+        console.log('📦 Image message queued offline - will send when connection restored');
+        console.log('   Message visible in UI via optimistic state');
+      } else if (result.success) {
+        console.log('✅ Image message sent successfully - will appear via Firestore listener');
+        // Message will be removed from optimistic state when Firestore listener fires
+      } else {
+        console.warn('⚠️ Image message send failed after retries');
+        // Update optimistic message to "failed" status
+        setOptimisticMessages(prev => 
+          prev.map(m => m.id === messageId ? { ...m, status: "failed" as MessageStatus } : m)
+        );
+      }
 
       // Clean up upload progress
       const newMap = new Map(uploadingImages);
       newMap.delete(messageId);
       setUploadingImages(newMap);
-
-      // Real-time listener will handle status updates
     } catch (error: any) {
       console.error('❌ Image upload/send failed:', error);
       Alert.alert('Upload Failed', error.message || 'Failed to upload image. Please try again.');
 
-      // Real-time listener will handle failed status
+      // Update optimistic message to "failed" status
+      setOptimisticMessages(prev => 
+        prev.map(m => m.id === messageId ? { ...m, status: "failed" as MessageStatus } : m)
+      );
 
       // Clean up upload progress
       const newMap = new Map(uploadingImages);
@@ -233,12 +360,32 @@ export default function ChatRoomScreen() {
   };
 
   const handleRetry = async (messageId: string) => {
-    const failedMessage = messages.find(m => m.id === messageId);
+    // Check both Firestore messages and optimistic messages
+    const failedMessage = allMessages.find(m => m.id === messageId);
     if (!failedMessage) return;
 
     console.log(`🔄 Manual retry for message ${messageId.substring(0, 8)}`);
-    await sendMessageWithRetry(conversationId, failedMessage);
-    // Real-time listener will update the status
+    
+    // Update optimistic status to "sending"
+    setOptimisticMessages(prev => 
+      prev.map(m => m.id === messageId ? { ...m, status: "sending" as MessageStatus } : m)
+    );
+    
+    const result = await sendMessageWithRetry(conversationId, failedMessage);
+    
+    if (result.isOffline) {
+      console.log('📦 Retry queued offline - will send when connection restored');
+      console.log('   Message visible in UI via optimistic state');
+    } else if (result.success) {
+      console.log('✅ Retry successful - will appear via Firestore listener');
+      // Message will be removed from optimistic state when Firestore listener fires
+    } else {
+      console.warn('⚠️ Retry failed after attempts');
+      // Update back to "failed" status
+      setOptimisticMessages(prev => 
+        prev.map(m => m.id === messageId ? { ...m, status: "failed" as MessageStatus } : m)
+      );
+    }
   };
 
   return (
@@ -255,7 +402,7 @@ export default function ChatRoomScreen() {
         </View>
       ) : (
         <FlashList
-          data={[...messages].reverse()}
+          data={[...allMessages].reverse()}
           renderItem={({ item }) => (
             <MessageBubble
               message={item}
@@ -269,6 +416,7 @@ export default function ChatRoomScreen() {
           onViewableItemsChanged={onViewableItemsChanged}
           viewabilityConfig={viewabilityConfig}
           keyExtractor={(item) => item.id}
+          extraData={allMessages}
           onEndReached={() => {
             // Auto-load more when scrolling to bottom
             if (hasMore && !loadingMore) {
@@ -288,7 +436,7 @@ export default function ChatRoomScreen() {
                   </TouchableOpacity>
                 )}
               </View>
-            ) : messages.length > 0 ? (
+            ) : allMessages.length > 0 ? (
               <View style={styles.endOfMessages}>
                 <Text style={styles.endOfMessagesText}>— Beginning of conversation —</Text>
               </View>
