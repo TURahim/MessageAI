@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { usePresence } from '@/hooks/usePresence';
 import { useAuth } from '@/hooks/useAuth';
+import { useGlobalNotificationListener } from '@/hooks/useGlobalNotificationListener';
 import { requestNotificationPermissions, setupNotificationTapHandler } from '@/services/notificationService';
 
 function AppContent() {
@@ -14,6 +15,9 @@ function AppContent() {
   // Pass undefined to skip when user is null (prevents permission errors)
   usePresence(user ? null : undefined);
 
+  // Global notification listener - watches ALL conversations for new messages
+  useGlobalNotificationListener(user?.uid);
+
   // Setup notifications when user is authenticated
   useEffect(() => {
     if (user) {
@@ -23,6 +27,7 @@ function AppContent() {
         if (granted) {
           setupNotificationTapHandler();
           console.log('✅ Notifications initialized');
+          console.log('🔔 Global notification listener active - watching all conversations');
         } else {
           console.warn('⚠️ Notification permissions denied by user');
         }
@@ -89,6 +94,20 @@ function AppContent() {
         name="chat/[id]" 
         options={{ 
           title: 'Chat', 
+          headerShown: true 
+        }} 
+      />
+      <Stack.Screen 
+        name="profile/[id]" 
+        options={{ 
+          title: 'Profile', 
+          headerShown: true 
+        }} 
+      />
+      <Stack.Screen 
+        name="groupInfo/[id]" 
+        options={{ 
+          title: 'Group Info', 
           headerShown: true 
         }} 
       />
