@@ -256,11 +256,13 @@ const styles = StyleSheet.create({
   friendOnlineContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 6,
   },
   friendOnlineText: {
     fontSize: 13,
     color: '#666',
-    marginLeft: 5,
+    lineHeight: 13,
+    paddingTop: 1,
   },
   messageButton: {
     backgroundColor: '#007AFF',
