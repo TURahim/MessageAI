@@ -38,7 +38,9 @@ export default function ChatRoomScreen() {
   const [otherUserName, setOtherUserName] = useState<string>('');
   const [uploadingImages, setUploadingImages] = useState<Map<string, number>>(new Map()); // messageId -> progress
   const [optimisticMessages, setOptimisticMessages] = useState<Message[]>([]); // Local queue for offline messages
+  const [showRetryBanner, setShowRetryBanner] = useState(false);
   const previousOnlineStatus = useRef<boolean>(true);
+  const retryBannerTimeout = useRef<NodeJS.Timeout | null>(null);
   
   const conversationId = id || "demo-conversation-1";
   const currentUserId = auth.currentUser?.uid || "anonymous";
@@ -150,6 +152,42 @@ export default function ChatRoomScreen() {
       setOptimisticMessages(stillPending);
     }
   }, [messages, optimisticMessages]);
+
+  // Delayed retry banner visibility (only show if messages stuck for 3+ seconds)
+  useEffect(() => {
+    const pendingCount = optimisticMessages.filter(m => m.status === 'sending').length;
+
+    // Clear any existing timeout
+    if (retryBannerTimeout.current) {
+      clearTimeout(retryBannerTimeout.current);
+      retryBannerTimeout.current = null;
+    }
+
+    if (pendingCount > 0 && isOnline) {
+      // Delay showing banner for 3 seconds
+      retryBannerTimeout.current = setTimeout(() => {
+        // Check again if there are still pending messages
+        setOptimisticMessages(current => {
+          const stillPending = current.filter(m => m.status === 'sending').length;
+          if (stillPending > 0) {
+            console.log(`⚠️ ${stillPending} message(s) stuck in sending state, showing retry banner`);
+            setShowRetryBanner(true);
+          }
+          return current;
+        });
+      }, 3000);
+    } else {
+      // Hide banner if no pending messages
+      setShowRetryBanner(false);
+    }
+
+    // Cleanup timeout on unmount
+    return () => {
+      if (retryBannerTimeout.current) {
+        clearTimeout(retryBannerTimeout.current);
+      }
+    };
+  }, [optimisticMessages, isOnline]);
 
   // Auto-retry pending messages when connection is restored (offline → online transition)
   useEffect(() => {
@@ -552,6 +590,9 @@ export default function ChatRoomScreen() {
     const pendingMessages = optimisticMessages.filter(m => m.status === 'sending');
     if (pendingMessages.length === 0) return;
 
+    // Hide banner immediately when user taps retry
+    setShowRetryBanner(false);
+
     console.log(`🔄 Manual retry all: ${pendingMessages.length} pending message(s)`);
     
     for (const msg of pendingMessages) {
@@ -585,8 +626,8 @@ export default function ChatRoomScreen() {
     >
       <ConnectionBanner />
 
-      {/* Show retry banner if there are pending messages and we're online */}
-      {isOnline && optimisticMessages.some(m => m.status === 'sending') && (
+      {/* Show retry banner only if messages stuck for 3+ seconds */}
+      {showRetryBanner && isOnline && (
         <TouchableOpacity style={styles.retryAllBanner} onPress={handleRetryAll}>
           <Text style={styles.retryAllText}>
             {optimisticMessages.filter(m => m.status === 'sending').length} message(s) waiting to send
