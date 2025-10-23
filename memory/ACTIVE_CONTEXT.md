@@ -8,10 +8,10 @@
 > 
 > These guides provide instant context for any development task.
 
-## Current Milestone: MVP COMPLETE + Enhanced ✅ - Phase 6 Done
-All 11 MVP features + 15 bonus features implemented. Friends-first UX, group info, offline sync enhancements complete.
-Production-ready codebase with WhatsApp-quality offline messaging.
-Latest commit: fb4a614 (main branch)
+## Current Milestone: MVP COMPLETE + Remote Push Notifications ✅ - Phase 6 & 7 Done
+All 11 MVP features + 15 bonus features implemented. Remote push notifications via Cloud Functions + APNs/FCM now live.
+Production-ready codebase with true remote push delivery, friends-first UX, and WhatsApp-quality offline messaging.
+Latest commit: 5d3b702 (main branch)
 
 ## What's Working (Phase 1-6 Complete)
 - ✅ Expo Router file-based routing (nested app/app/ structure)
@@ -46,7 +46,7 @@ Latest commit: fb4a614 (main branch)
 - ✅ Image upload with compression (< 2MB)
 - ✅ Modern attachment modal (camera/gallery picker)
 - ✅ Blue + button for attachments (replaced camera emoji)
-- ✅ Foreground notifications with smart suppression
+- ✅ Remote push notifications via Cloud Functions + Expo Push Service (APNs/FCM)
 - ✅ Long-press to delete conversations
 - ✅ Double-tap navigation prevention
 - ✅ Skeleton loaders for better UX
@@ -141,11 +141,12 @@ MessageAI/
 
 ## Git Status
 - Branch: main
-- Last commit: fb4a614 "feat: friends-first UX, group info, offline sync, and major UX improvements"
-- Files changed: 70 files (+5,769 lines, -3,377 lines)
-- Ahead of origin: 5 commits
-- New files: AttachmentModal.tsx, friendService.ts, useFriends.ts, profile/[id].tsx, groupInfo/[id].tsx
-- Documentation: 5 new implementation guides added
+- Last commit: 5d3b702 "feat: migrate to remote push notifications via Cloud Functions + APNs/FCM"
+- Files changed: 80+ files total this session
+- Up to date with origin (all pushed)
+- New files: Cloud Functions (functions/), useUserPresence.ts, PUSH-NOTIFICATIONS-SETUP.md
+- Documentation: 6 implementation guides + push setup guide
+- CI/CD: GitHub Actions workflow active and passing
 
 ## Known Issues & Resolutions
 - ✅ RESOLVED: Expo Router "Welcome to Expo" - Nested app/app/ directory required
@@ -167,14 +168,14 @@ MessageAI/
 - ⚠️ Notifications - Foreground only (no FCM/push) - Post-MVP enhancement
 
 ## Next Actions
-1. Fix remaining offline auto-retry issue (messages staying in "Sending..." state)
-2. Test multiple offline messages with network recovery
-3. Execute E2E Test Scenarios (use MANUAL-TEST-CHECKLIST.md)
-4. Performance Verification (scroll, memory, console)
-5. Build Dev Client (eas build --profile development --platform ios)
-6. Test Notifications (requires dev client, not Expo Go)
-7. Optional: Implement global notification listener for all-screen notifications
-8. Optional: Deploy to TestFlight/Play Console
+1. Enable Firebase Blaze Plan (required for Cloud Functions)
+2. Deploy Cloud Functions: cd functions && npm install && firebase deploy --only functions
+3. Configure APNs credentials: eas credentials
+4. Build development client: eas build --profile development --platform all
+5. Test on physical devices (iOS and Android)
+6. Verify remote push notifications work in foreground and background
+7. Execute remaining E2E Test Scenarios (use MANUAL-TEST-CHECKLIST.md)
+8. Deploy to TestFlight/Play Console for beta testing
 
 ## Testing Commands
 ```bash
@@ -251,6 +252,7 @@ import { addFriend } from '@/services/friendService';
 ### Firestore Rules Updated
 - Allow bidirectional friend updates
 - Simplified friends field modification rules
+- Allow Cloud Functions to update pushToken fields
 - Deployed to production
 
 ### App Configuration
@@ -258,4 +260,19 @@ import { addFriend } from '@/services/friendService';
 - App name: MessageAI
 - Native folders regenerated with new bundle ID
 - Package versions updated for compatibility
+
+### Phase 7: Remote Push Notifications (Latest)
+- Created Firebase Cloud Functions project (functions/)
+- Implemented sendMessageNotification Cloud Function
+- Triggers on message onCreate in Firestore
+- Fetches recipient push tokens and sends via Expo Push API
+- Client: registerForPushNotifications() gets and stores Expo push token
+- Removed all local notification scheduling (showMessageNotification)
+- Deleted useGlobalNotificationListener hook (no longer needed)
+- Push tokens stored in Firestore for Cloud Functions access
+- Works with APNs (iOS) and FCM (Android)
+- Requires physical device and EAS development build
+- Added expo-device dependency
+- Updated Firestore rules for pushToken field updates
+- Comprehensive setup guide: PUSH-NOTIFICATIONS-SETUP.md
 

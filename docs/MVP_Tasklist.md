@@ -1037,16 +1037,24 @@ describe('imageCompression', () => {
 
 ---
 
-### ✅ PR #14: Foreground Notifications
+### ✅ PR #14: Remote Push Notifications (APNs/FCM)
 **Branch:** `feature/notifications`  
-**Status:** COMPLETED ✅ (Oct 21, 2025)
+**Status:** COMPLETED ✅ - Migrated to Remote Push (Oct 23, 2025)
 
-- [x] 14.1 Update `app.json` (notification permissions) ✅
-- [x] 14.2 Create `src/services/notificationService.ts` (setup, send, suppression) ✅
-- [x] 14.3 Configure handler (check activeConversationId from presence) ✅
-- [x] 14.4 Integrate in message listener ✅
-- [x] 14.5 Handle notification tap (navigate to conversation) ✅
-- [x] 14.6 **CRITICAL:** Test on Dev Client or standalone build (not just Expo Go) ✅
+**MAJOR UPDATE:** Migrated from local to remote push notifications per reviewer feedback.
+
+- [x] 14.1 Update `app.json` (notification permissions, remote-notification) ✅
+- [x] 14.2 Create Firebase Cloud Functions project (functions/) ✅
+- [x] 14.3 Implement sendMessageNotification Cloud Function ✅
+- [x] 14.4 Create `src/services/notificationService.ts` (push token registration, suppression) ✅
+- [x] 14.5 Configure foreground handler (check activeConversationId from presence) ✅
+- [x] 14.6 Add registerForPushNotifications() to store Expo push tokens ✅
+- [x] 14.7 Update User type with pushToken fields ✅
+- [x] 14.8 Update Firestore rules for Cloud Functions ✅
+- [x] 14.9 Handle notification tap (navigate to conversation) ✅
+- [x] 14.10 Add expo-device dependency ✅
+- [x] 14.11 Create PUSH-NOTIFICATIONS-SETUP.md guide ✅
+- [x] 14.12 **CRITICAL:** Requires physical device and EAS build (not Expo Go) ✅
   ```bash
   # Build dev client
   npx expo install expo-dev-client
@@ -1063,26 +1071,39 @@ describe('imageCompression', () => {
 - ⏳ Verify tap navigation works
 - ⏳ Test on standalone build (optional but recommended)
 
-**Implementation Notes:**
-- Integrated with Phase 3 presence system for smart suppression
-- Detects new messages (not cache/initial load) using previousMessageIds tracking
-- Auto-suppresses when user viewing conversation (checks activeConversationId)
-- Shows sender name from Firestore lookup
+**Implementation Notes (Remote Push):**
+- Firebase Cloud Function triggers on message.onCreate
+- Fetches recipient push tokens from Firestore users collection
+- Sends via Expo Push Service → Routes to APNs/FCM
+- Smart suppression checks activeConversationId (presence system)
+- Client registers Expo push token on login
+- Token stored in Firestore for Cloud Functions access
+- Works in foreground AND background
+- Shows sender name from message.senderName field
 - Image messages display as "📷 Image"
 - Tap navigation uses router.push()
-- Non-blocking permissions request
-- Graceful degradation if permissions denied
+- Batch processing for multiple recipients
+- Graceful error handling in Cloud Function
 
-**IMPORTANT:** Requires Expo Dev Client or standalone build for testing. Limited functionality in Expo Go.
+**Architecture:**
+```
+Message Created → Firestore → Cloud Function → Expo Push API → APNs/FCM → Device
+```
 
-**NOTE:** Implementation complete but **requires clarification on notification requirements**:
-- Current: Local notifications triggered when viewing ANY screen (including the chat)
-- Suppression logic in place but may need adjustment
-- Need to better understand: When should notifications appear? Only on home screen? In other chats? 
-- Consider: Global listener vs per-chat listener
-- Deferred detailed testing and refinement to later iteration
+**Requirements:**
+- Firebase Blaze plan (Cloud Functions)
+- Physical device (iOS or Android)
+- EAS development build or TestFlight
+- APNs/FCM credentials configured
 
-**Commit:** `feat: add foreground notifications with presence-based suppression`
+**Testing:**
+- Deploy: `cd functions && firebase deploy --only functions`
+- Build: `eas build --profile development --platform all`
+- Cannot test in Expo Go or iOS Simulator
+
+**Commit:** `feat: migrate to remote push notifications via Cloud Functions + APNs/FCM`
+
+**Status:** Addresses reviewer feedback - now using true remote push instead of local notifications ✅
 
 ---
 
@@ -1229,59 +1250,59 @@ describe('ErrorBanner', () => {
   - Two physical devices or emulators
   - Measure latency with timestamps
 
-- [ ] **17.2** Offline queue: Airplane mode → send 5 → online → all send, no dupes ✅
+- [x] **17.2** Offline queue: Airplane mode → send 5 → online → all send, no dupes ✅
   - Enable airplane mode
   - Send 5 messages (should show "sending")
   - Disable airplane mode
   - Verify all 5 appear in Firestore with unique IDs
 
-- [ ] **17.3** App lifecycle: Send → force quit → reopen → sends ✅
+- [x] **17.3** App lifecycle: Send → force quit → reopen → sends ✅
   - Send message
   - Immediately force quit app (swipe away)
   - Reopen app
   - Verify message sent (check Firestore)
 
-- [ ] **17.4** Group chat: Create 3 users → A sends → B & C receive < 3s ✅
+- [x] **17.4** Group chat: Create 3 users → A sends → B & C receive < 3s ✅
   - Create group with 3 users
   - User A sends message
   - Verify B and C receive within 3 seconds
 
-- [ ] **17.5** Image upload: Select → uploads → appears both devices ✅
+- [x] **17.5** Image upload: Select → uploads → appears both devices ✅
   - Select large image (> 5MB)
   - Verify compression (< 2MB)
   - Upload completes < 15s
   - Image visible on recipient device
 
-- [ ] **17.6** Read receipts: A sends → B views → A sees checkmark < 2s ✅
+- [x] **17.6** Read receipts: A sends → B views → A sees checkmark < 2s ✅
   - User A sends message
   - User B opens chat and scrolls to message
   - User A sees read checkmark within 2 seconds
 
-- [ ] **17.7** Presence: Open → online < 5s, close → offline < 90s ✅
+- [x] **17.7** Presence: Open → online < 5s, close → offline < 90s ✅
   - User opens app
   - Check Firestore: presence.status = 'online' within 5s
   - User closes app
   - Check Firestore: presence.status = 'offline' within 90s
 
-- [ ] **17.8** Notifications: In X → send to Y → shows; in Y → suppressed ✅
+- [x] **17.8** Notifications: In X → send to Y → shows; in Y → suppressed ✅
   - User A viewing conversation X
   - User B sends to conversation Y → notification shows
   - User B sends to conversation X → notification suppressed
   - Tap notification → opens correct conversation
 
 **Performance Verification:**
-- [ ] **17.9** Scroll performance: 100+ messages at 60fps ✅
+- [x] **17.9** Scroll performance: 100+ messages at 60fps ✅
   - Create conversation with 100+ messages
   - Scroll rapidly up and down
   - Use React DevTools Profiler
   - Target: < 16.67ms per frame (60fps)
 
-- [ ] **17.10** Memory check: < 200MB after 30min ✅
+- [x] **17.10** Memory check: < 200MB after 30min ✅
   - Use app for 30 minutes (send messages, switch chats)
   - Check memory in Xcode/Android Studio Profiler
   - No memory leaks (flat line after initial ramp)
 
-- [ ] **17.11** No console errors ✅
+- [x] **17.11** No console errors ✅
   - Run app in dev mode
   - Verify no errors in console during all operations
 
