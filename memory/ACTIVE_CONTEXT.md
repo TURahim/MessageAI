@@ -165,33 +165,41 @@ MessageAI/
 - ✅ RESOLVED: Friends security rules - Simplified for bidirectional updates
 - ✅ RESOLVED: Package version compatibility - Updated expo/react-native versions
 - ⚠️ Auth persistence - Memory only (users re-login per session) - Acceptable for MVP
-- ⏳ Cloud Functions deployment - Pending API enablement in Google Cloud Console
-  - Error: Default service account doesn't exist
-  - Solution: Enable Cloud Functions API + Compute Engine API
-  - Status: Code ready, awaiting deployment
-- ⏳ Push notification testing - Pending Cloud Functions deployment + physical device build
+- ✅ RESOLVED: Cloud Functions deployment - Successfully deployed with Node.js 20
+  - Added @google-cloud/functions-framework dependency
+  - Runtime upgraded from Node 18 (deprecated) to Node 20
+  - Function live: sendMessageNotification(us-central1)
+- ⏳ Push notification testing - Ready to build and test on physical device
+  - Backend deployed ✅
+  - Need: EAS build for iPhone
+  - Test with: Expo Push Tool (https://expo.dev/notifications)
 
 ## Current Status & Next Actions
 
 ### Deployment Status:
 - ✅ Firebase Blaze Plan enabled
-- ✅ Cloud Functions code complete (functions/src/index.ts)
-- ✅ Functions dependencies installed (pnpm install)
-- ⏳ Cloud Functions deployment pending - Service account issue
-  - Error: Default service account doesn't exist
-  - Fix: Enable Cloud Functions API in Google Cloud Console
-  - Link: https://console.cloud.google.com/apis/library/cloudfunctions.googleapis.com?project=messageai-88921
+- ✅ Cloud Functions deployed successfully
+  - Runtime: Node.js 20 (upgraded from deprecated Node 18)
+  - Function: sendMessageNotification(us-central1)
+  - Status: Live and operational
+  - Added @google-cloud/functions-framework dependency
+- ✅ All Firebase services configured and deployed
+  - Firestore rules ✅
+  - Storage rules ✅
+  - Firestore indexes ✅
+  - Cloud Functions ✅
 - ✅ Expo Go dev server running (for UI/UX testing)
-- ⏳ Physical device build pending (after Cloud Functions deployed)
+- ⏳ Physical device build pending (ready to build with eas build)
 
 ### Immediate Next Steps:
-1. Enable Cloud Functions API in Google Cloud Console (2 minutes)
-2. Enable Compute Engine API (for service account creation)
-3. Wait 2-3 minutes for service accounts to provision
-4. Deploy Cloud Functions: firebase deploy --only functions
-5. Build for iPhone: eas build --profile development --platform ios
-6. Install on device and get push token
-7. Test with Expo Push Tool: https://expo.dev/notifications
+1. ✅ Cloud Functions deployed (Node.js 20)
+2. Build for iPhone: eas build --profile development --platform ios
+3. Install on device: eas build:run -p ios (or scan QR from build page)
+4. Login to app to register push token
+5. Get token from console logs or Firebase Console (users/{uid}/pushToken)
+6. Test with Expo Push Tool: https://expo.dev/notifications
+7. Verify foreground and background notifications work
+8. Execute remaining E2E scenarios from MANUAL-TEST-CHECKLIST.md
 
 ### For Testing Without Push (Available Now):
 - ✅ Use Expo Go (scan QR code from terminal)

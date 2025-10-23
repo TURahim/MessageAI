@@ -16,7 +16,9 @@ A production-quality real-time messaging application with offline support, optim
 - ✅ **Phase 4:** Image upload, foreground notifications (Complete)
 - ✅ **Phase 5:** Pagination, error handling, testing framework (Complete)
 - ✅ **Phase 6:** Friends-first UX, group info, offline sync enhancements (Complete)
-- ⏳ **Manual Testing:** E2E testing pending (use MANUAL-TEST-CHECKLIST.md)
+- ✅ **Phase 7:** Remote push notifications via Cloud Functions (Complete)
+- ✅ **Backend Deployed:** Cloud Functions live on Node.js 20
+- ⏳ **Device Testing:** Build and test on physical device (use PUSH-TESTING-GUIDE.md)
 
 ### All 11 MVP Features Complete + Major Enhancements ✅
 - ✅ Email/password authentication (Google Sign-In removed)
@@ -60,8 +62,10 @@ A production-quality real-time messaging application with offline support, optim
 ### Backend
 - **Firebase 12.4.0** - Backend platform
   - **Firestore** - Real-time database with offline support
-  - **Firebase Auth** - Email/password + Google Sign-In
+  - **Firebase Auth** - Email/password authentication
   - **Firebase Storage** - Profile photos & media uploads
+  - **Cloud Functions** - Node.js 20 (deployed ✅)
+- **Expo Push Service** - APNs/FCM notification delivery
 - **Firestore Offline Persistence** - Automatic AsyncStorage caching
 - **@react-native-community/netinfo** - Network status detection
 
@@ -194,12 +198,16 @@ MessageAI/
    firebase deploy --only firestore:rules,storage:rules
    ```
 
-5. **Deploy Cloud Functions** (Required for push notifications)
+5. **Deploy Cloud Functions** (✅ Already Deployed)
    ```bash
    cd functions
-   npm install
+   pnpm install
    firebase deploy --only functions
    ```
+   
+   **Status:** ✅ Cloud Functions deployed with Node.js 20 runtime
+   - Function: `sendMessageNotification(us-central1)`
+   - Automatically sends push notifications on new messages
 
 6. **Start the app**
    ```bash
