@@ -165,17 +165,39 @@ MessageAI/
 - ✅ RESOLVED: Friends security rules - Simplified for bidirectional updates
 - ✅ RESOLVED: Package version compatibility - Updated expo/react-native versions
 - ⚠️ Auth persistence - Memory only (users re-login per session) - Acceptable for MVP
-- ⚠️ Notifications - Foreground only (no FCM/push) - Post-MVP enhancement
+- ⏳ Cloud Functions deployment - Pending API enablement in Google Cloud Console
+  - Error: Default service account doesn't exist
+  - Solution: Enable Cloud Functions API + Compute Engine API
+  - Status: Code ready, awaiting deployment
+- ⏳ Push notification testing - Pending Cloud Functions deployment + physical device build
 
-## Next Actions
-1. Enable Firebase Blaze Plan (required for Cloud Functions)
-2. Deploy Cloud Functions: cd functions && npm install && firebase deploy --only functions
-3. Configure APNs credentials: eas credentials
-4. Build development client: eas build --profile development --platform all
-5. Test on physical devices (iOS and Android)
-6. Verify remote push notifications work in foreground and background
-7. Execute remaining E2E Test Scenarios (use MANUAL-TEST-CHECKLIST.md)
-8. Deploy to TestFlight/Play Console for beta testing
+## Current Status & Next Actions
+
+### Deployment Status:
+- ✅ Firebase Blaze Plan enabled
+- ✅ Cloud Functions code complete (functions/src/index.ts)
+- ✅ Functions dependencies installed (pnpm install)
+- ⏳ Cloud Functions deployment pending - Service account issue
+  - Error: Default service account doesn't exist
+  - Fix: Enable Cloud Functions API in Google Cloud Console
+  - Link: https://console.cloud.google.com/apis/library/cloudfunctions.googleapis.com?project=messageai-88921
+- ✅ Expo Go dev server running (for UI/UX testing)
+- ⏳ Physical device build pending (after Cloud Functions deployed)
+
+### Immediate Next Steps:
+1. Enable Cloud Functions API in Google Cloud Console (2 minutes)
+2. Enable Compute Engine API (for service account creation)
+3. Wait 2-3 minutes for service accounts to provision
+4. Deploy Cloud Functions: firebase deploy --only functions
+5. Build for iPhone: eas build --profile development --platform ios
+6. Install on device and get push token
+7. Test with Expo Push Tool: https://expo.dev/notifications
+
+### For Testing Without Push (Available Now):
+- ✅ Use Expo Go (scan QR code from terminal)
+- ✅ Test all UI/UX features
+- ✅ Test messaging, friends, groups, offline sync
+- ✅ Push notifications will gracefully skip (device check)
 
 ## Testing Commands
 ```bash
