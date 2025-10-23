@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  push:
+    branches: [main, mvp_submission]
+  pull_request:
+    branches: [main, mvp_submission]
+
+jobs:
+  type-check:
+    name: TypeScript Type Check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'pnpm'
+          cache-dependency-path: 'app/pnpm-lock.yaml'
+      
+      - name: Install dependencies
+        run: cd app && pnpm install --frozen-lockfile
+      
+      - name: Run TypeScript check
+        run: cd app && npx tsc --noEmit
+
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'pnpm'
+          cache-dependency-path: 'app/pnpm-lock.yaml'
+      
+      - name: Install dependencies
+        run: cd app && pnpm install --frozen-lockfile
+      
+      - name: Run tests
+        run: cd app && pnpm test --passWithNoTests
+
+  lint-check:
+    name: Lint Check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'pnpm'
+          cache-dependency-path: 'app/pnpm-lock.yaml'
+      
+      - name: Install dependencies
+        run: cd app && pnpm install --frozen-lockfile
+      
+      - name: Check for console.logs (warnings only)
+        run: |
+          cd app
+          echo "Checking for console statements..."
+          grep -r "console\." app/ src/ --include="*.ts" --include="*.tsx" || echo "Check complete"
+        continue-on-error: true
+
