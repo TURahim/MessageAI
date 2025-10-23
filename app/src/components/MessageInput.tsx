@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, TextInput, TouchableOpacity, StyleSheet, Text as RNText } from 'react-native';
 import AttachmentModal from './AttachmentModal';
+import AIQuickActions from './AIQuickActions';
 
 interface Props {
   onSend: (text: string) => void;
@@ -9,6 +10,10 @@ interface Props {
   onStopTyping?: () => void;
   placeholder?: string;
   disabled?: boolean;
+  onSuggestTime?: () => void;
+  onSummarize?: () => void;
+  onCreateDeadline?: () => void;
+  onSetReminder?: () => void;
 }
 
 export default function MessageInput({ 
@@ -17,10 +22,15 @@ export default function MessageInput({
   onTyping, 
   onStopTyping, 
   placeholder = 'Type a message...',
-  disabled = false
+  disabled = false,
+  onSuggestTime,
+  onSummarize,
+  onCreateDeadline,
+  onSetReminder,
 }: Props) {
   const [text, setText] = useState('');
   const [showAttachmentModal, setShowAttachmentModal] = useState(false);
+  const [showQuickActions, setShowQuickActions] = useState(false);
 
   const handleChangeText = (newText: string) => {
     setText(newText);
@@ -47,6 +57,10 @@ export default function MessageInput({
     setShowAttachmentModal(true);
   };
 
+  const handleOpenQuickActions = () => {
+    setShowQuickActions(true);
+  };
+
   return (
     <View style={styles.container}>
       {/* Modern + attachment button */}
@@ -60,6 +74,16 @@ export default function MessageInput({
           <RNText style={styles.attachmentButtonText}>+</RNText>
         </TouchableOpacity>
       )}
+
+      {/* AI Quick Actions button (sparkles icon) */}
+      <TouchableOpacity
+        style={styles.aiButton}
+        onPress={handleOpenQuickActions}
+        disabled={disabled}
+        activeOpacity={0.7}
+      >
+        <RNText style={styles.aiButtonText}>✨</RNText>
+      </TouchableOpacity>
 
       <TextInput
         style={styles.input}
@@ -85,6 +109,16 @@ export default function MessageInput({
         visible={showAttachmentModal}
         onClose={() => setShowAttachmentModal(false)}
         onSendImage={onSendImage}
+      />
+
+      {/* AI Quick Actions modal */}
+      <AIQuickActions
+        visible={showQuickActions}
+        onClose={() => setShowQuickActions(false)}
+        onSuggestTime={onSuggestTime}
+        onSummarize={onSummarize}
+        onCreateDeadline={onCreateDeadline}
+        onSetReminder={onSetReminder}
       />
     </View>
   );
@@ -150,6 +184,24 @@ const styles = StyleSheet.create({
     fontWeight: '300',
     color: '#fff',
     marginTop: -2, // Optical alignment for +
+  },
+  aiButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#7C3AED',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  aiButtonText: {
+    fontSize: 20,
+    color: '#fff',
   },
 });
 

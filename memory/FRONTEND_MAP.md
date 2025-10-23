@@ -16,11 +16,18 @@ app/                           # Project root
     │   ├── login.tsx          [/(auth)/login]
     │   └── signup.tsx         [/(auth)/signup]
     ├── (tabs)/
-    │   ├── _layout.tsx        [Tab navigator]
+    │   ├── _layout.tsx        [Tab navigator - 5 tabs]
     │   ├── index.tsx          [/(tabs) - Chats list]
+    │   ├── schedule.tsx       [/(tabs)/schedule - Calendar/Events]
+    │   ├── tasks.tsx          [/(tabs)/tasks - Deadlines/To-dos]
+    │   ├── assistant.tsx      [/(tabs)/assistant - AI Dashboard]
     │   └── profile.tsx        [/(tabs)/profile]
-    └── chat/
-        └── [id].tsx           [/chat/:id - Dynamic route]
+    ├── chat/
+    │   └── [id].tsx           [/chat/:id - Dynamic route]
+    ├── users.tsx              [/users - Suggested Contacts]
+    ├── newGroup.tsx           [/newGroup - Group Creation]
+    ├── profile/[id].tsx       [/profile/:id - User Profile]
+    └── groupInfo/[id].tsx     [/groupInfo/:id - Group Info]
 ```
 
 ## Components Structure
@@ -59,15 +66,49 @@ app/                           # Project root
   - Auto-redirect to tabs on success
 - **Firestore:** Creates /users/{uid} with presence
 
-#### `(tabs)/index.tsx` (Chats)
+#### `(tabs)/index.tsx` (Chats) ✅
 - **Location:** `app/app/(tabs)/index.tsx` ⚠️ NESTED!
-- **State:** None (empty state)
-- **Purpose:** Conversation list
-- **TODO:** 
-  - Subscribe to user's conversations
-  - Display ConversationListItem components
-  - Navigate to chat/[id] on tap
-  - Show last message + timestamp
+- **Status:** Complete - Friends-first layout
+- **Purpose:** Conversation list with friends section
+- **Features:**
+  - Friends list with online status
+  - Recent conversations
+  - Message preview with timestamps
+  - FAB to find friends
+  - "New Group" button
+
+#### `(tabs)/schedule.tsx` (Schedule) ✅ NEW
+- **Location:** `app/app/(tabs)/schedule.tsx` ⚠️ NESTED!
+- **Status:** Complete - Mock data
+- **Purpose:** Calendar and event management
+- **Features:**
+  - Week calendar with navigation
+  - Event list grouped by day
+  - Event details modal
+  - "Add Lesson" with AI parsing (mock)
+- **Mock Data:** useEvents hook (7 events)
+
+#### `(tabs)/tasks.tsx` (Tasks) ✅ NEW
+- **Location:** `app/app/(tabs)/tasks.tsx` ⚠️ NESTED!
+- **Status:** Complete - Mock data
+- **Purpose:** Deadline and task management
+- **Features:**
+  - Overdue/Upcoming/Completed sections
+  - Mark complete/incomplete
+  - Create task with assignee selector
+  - Navigate to conversations
+- **Mock Data:** useDeadlines hook (8 deadlines)
+
+#### `(tabs)/assistant.tsx` (Assistant) ✅ NEW
+- **Location:** `app/app/(tabs)/assistant.tsx` ⚠️ NESTED!
+- **Status:** Complete - Real calculations
+- **Purpose:** AI insights dashboard
+- **Features:**
+  - 5 insight widgets (calculated from mock data)
+  - Responsive 2-column grid
+  - 4 quick action buttons
+  - Personalized greeting
+- **Data:** Real-time calculations from useEvents + useDeadlines
 
 #### `(tabs)/profile.tsx` ✅
 - **Location:** `app/app/(tabs)/profile.tsx` ⚠️ NESTED!
@@ -257,6 +298,44 @@ import { db, auth } from '@/lib/firebase';
 
 ### jest.config.ts
 - **transformIgnorePatterns:** expo-router, uuid, @firebase
+
+## JellyDM UI Components (Phase 8 - NEW)
+
+### PR-01: Tab Navigation
+- TabIcon - Tab bar icons with Ionicons
+- SectionHeader - Reusable section headers
+
+### PR-02: AI-Aware Chat
+- StatusChip - RSVP status (pending/confirmed/declined/conflict)
+- AssistantBubble - AI message container (purple theme)
+- EventCard - Inline calendar event
+- DeadlineCard - Inline task/deadline
+- ConflictWarning - Scheduling conflict banner
+- RSVPButtons - Accept/Decline for invites
+- AIQuickActions - Bottom sheet (4 AI actions)
+- useThreadStatus - Derives RSVP state from messages
+
+### PR-03: Schedule Tab
+- CalendarHeader - Week navigation
+- EventListItem - Event card
+- EventList - Day-grouped list
+- EventDetailsSheet - Event details modal
+- AddLessonModal - Natural language lesson creation
+- FAB - Floating action button
+- useEvents - Fetch events (MOCK DATA)
+
+### PR-04: Tasks Tab
+- ProgressRing - Simplified progress indicator
+- DeadlineList - Sectioned deadlines
+- DeadlineCreateModal - Task creation
+- useDeadlines - Fetch deadlines (MOCK DATA)
+
+### PR-05: Assistant Tab
+- InsightCard - Dashboard widget
+- InsightsGrid - Responsive grid layout
+- AssistantActionRow - Quick action buttons
+
+**See JellyDM_UI.md for complete mock/placeholder tracking**
 
 ## Accessibility
 - ⚠️ Not implemented yet

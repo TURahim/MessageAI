@@ -26,8 +26,10 @@ import { useTypingIndicator } from "@/hooks/useTypingIndicator";
 import { useMarkAsRead } from "@/hooks/useMarkAsRead";
 import { useMessages } from "@/hooks/useMessages";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
+import { useThreadStatus } from "@/hooks/useThreadStatus";
 import { uploadImage } from "@/services/mediaService";
 import { Conversation } from "@/types/index";
+import StatusChip from "@/components/StatusChip";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function ChatRoomScreen() {
@@ -139,6 +141,9 @@ export default function ChatRoomScreen() {
     
     return merged;
   }, [messages, optimisticMessages]);
+
+  // Derive thread status for RSVP chip (must be after allMessages is computed)
+  const threadStatus = useThreadStatus(allMessages, currentUserId);
 
   // Clean up optimistic messages when they appear in Firestore
   useEffect(() => {
@@ -328,7 +333,7 @@ export default function ChatRoomScreen() {
             </View>
           );
           
-          // Make the name tappable to view profile
+          // Make the name tappable to view profile, add status chip if active invite
           if (otherUserName) {
             title = () => (
               <TouchableOpacity
@@ -338,6 +343,13 @@ export default function ChatRoomScreen() {
                 <Text style={{ fontSize: 17, fontWeight: '600', color: '#000' }}>
                   {otherUserName}
                 </Text>
+                {/* Show status chip if there's an active invite */}
+                {threadStatus.hasActiveInvite && threadStatus.status && (
+                  <StatusChip 
+                    variant={threadStatus.status}
+                    text={threadStatus.eventTitle || undefined}
+                  />
+                )}
               </TouchableOpacity>
             );
           }
@@ -355,9 +367,17 @@ export default function ChatRoomScreen() {
             <Text style={{ fontSize: 17, fontWeight: '600', color: '#000' }}>
               {groupName}
             </Text>
-            <Text style={{ fontSize: 12, color: '#666' }}>
-              {memberCount} {memberCount === 1 ? 'member' : 'members'}
-            </Text>
+            {/* Show status chip if there's an active invite */}
+            {threadStatus.hasActiveInvite && threadStatus.status ? (
+              <StatusChip 
+                variant={threadStatus.status}
+                text={threadStatus.eventTitle || undefined}
+              />
+            ) : (
+              <Text style={{ fontSize: 12, color: '#666' }}>
+                {memberCount} {memberCount === 1 ? 'member' : 'members'}
+              </Text>
+            )}
           </TouchableOpacity>
         );
 
@@ -378,7 +398,7 @@ export default function ChatRoomScreen() {
         headerBackTitle: 'Chats',
       });
     }
-  }, [conversation, otherUserName, currentUserId, navigation, conversationId]);
+  }, [conversation, otherUserName, currentUserId, navigation, conversationId, threadStatus]);
 
   // NOTE: Push notifications are now handled by Firebase Cloud Functions
   // When a message is created, the Cloud Function automatically sends

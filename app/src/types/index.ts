@@ -4,6 +4,49 @@ import { Timestamp } from "firebase/firestore";
 export type MessageStatus = "sending" | "sent" | "failed";
 export type MessageType = "text" | "image";
 
+// AI/Assistant metadata types
+export interface EventMeta {
+  eventId: string;
+  title: string;
+  startTime: Timestamp;
+  endTime: Timestamp;
+  participants: string[];
+  status?: 'pending' | 'confirmed' | 'declined';
+}
+
+export interface DeadlineMeta {
+  deadlineId: string;
+  title: string;
+  dueDate: Timestamp;
+  assignee?: string;
+  completed?: boolean;
+}
+
+export interface RSVPMeta {
+  eventId: string;
+  responses?: { [userId: string]: 'accepted' | 'declined' };
+}
+
+export interface ConflictMeta {
+  conflictId: string;
+  message: string;
+  suggestedAlternatives?: Array<{
+    startTime: Timestamp;
+    endTime: Timestamp;
+    reason?: string;
+  }>;
+}
+
+export interface MessageMeta {
+  role?: 'assistant' | 'system' | 'user';
+  eventId?: string;
+  event?: EventMeta;
+  deadlineId?: string;
+  deadline?: DeadlineMeta;
+  rsvp?: RSVPMeta;
+  conflict?: ConflictMeta;
+}
+
 export interface Message {
   id: string; // Client-generated UUID (idempotency key)
   conversationId: string;
@@ -22,6 +65,8 @@ export interface Message {
   retryCount: number;
   readBy: string[]; // For read receipts
   readCount: number; // Aggregate for groups
+  meta?: MessageMeta; // AI/Assistant metadata
+  senderName?: string; // Cached sender name for display
 }
 
 // User types

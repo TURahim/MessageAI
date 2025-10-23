@@ -51,5 +51,20 @@ service cloud.firestore {
           request.auth.uid in get(/databases/$(db)/documents/conversations/$(cid)).data.participants;
       }
     }
+
+    // --- FAILED_OPERATIONS COLLECTION (PR3) ---
+    // Only Cloud Functions can write (no auth context)
+    // Admins can read for debugging
+    match /failed_operations/{opId} {
+      allow read: if request.auth != null && request.auth.token.admin == true;
+      allow write: if false; // Only Cloud Functions via admin SDK
+    }
+
+    // --- VECTOR_MESSAGES COLLECTION (PR2) ---
+    // Only Cloud Functions can write (embeddings)
+    // No direct user access needed
+    match /vector_messages/{msgId} {
+      allow read, write: if false; // Only Cloud Functions via admin SDK
+    }
   }
 }

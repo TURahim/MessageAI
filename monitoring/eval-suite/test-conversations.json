@@ -1,0 +1,309 @@
+{
+  "schedule": [
+    {
+      "input": "Can we meet tomorrow at 3pm?",
+      "expected": {
+        "task": "scheduling",
+        "confidence_min": 0.85
+      }
+    },
+    {
+      "input": "Let's do Friday morning",
+      "expected": {
+        "task": "scheduling",
+        "confidence_min": 0.75
+      }
+    },
+    {
+      "input": "Are you available next week?",
+      "expected": {
+        "task": "scheduling",
+        "confidence_min": 0.70
+      }
+    },
+    {
+      "input": "Can we schedule a session for Monday 2pm?",
+      "expected": {
+        "task": "scheduling",
+        "confidence_min": 0.90
+      }
+    },
+    {
+      "input": "I'd like to book Thursday afternoon",
+      "expected": {
+        "task": "scheduling",
+        "confidence_min": 0.80
+      }
+    },
+    {
+      "input": "What about Saturday at 10am?",
+      "expected": {
+        "task": "scheduling",
+        "confidence_min": 0.85
+      }
+    },
+    {
+      "input": "Next Tuesday works for me",
+      "expected": {
+        "task": "scheduling",
+        "confidence_min": 0.70
+      }
+    },
+    {
+      "input": "How about 4:30pm on Wednesday?",
+      "expected": {
+        "task": "scheduling",
+        "confidence_min": 0.90
+      }
+    },
+    {
+      "input": "Can we push it to next month?",
+      "expected": {
+        "task": "scheduling",
+        "confidence_min": 0.65
+      }
+    },
+    {
+      "input": "I'm free after school tomorrow",
+      "expected": {
+        "task": "scheduling",
+        "confidence_min": 0.75
+      }
+    }
+  ],
+  "rsvp": [
+    {
+      "input": "Yes that works for me",
+      "expected": {
+        "task": "rsvp",
+        "confidence_min": 0.85
+      }
+    },
+    {
+      "input": "Sounds good!",
+      "expected": {
+        "task": "rsvp",
+        "confidence_min": 0.80
+      }
+    },
+    {
+      "input": "Sorry can't make it",
+      "expected": {
+        "task": "rsvp",
+        "confidence_min": 0.85
+      }
+    },
+    {
+      "input": "I'm busy that day",
+      "expected": {
+        "task": "rsvp",
+        "confidence_min": 0.75
+      }
+    },
+    {
+      "input": "Perfect! See you then",
+      "expected": {
+        "task": "rsvp",
+        "confidence_min": 0.85
+      }
+    },
+    {
+      "input": "That doesn't work unfortunately",
+      "expected": {
+        "task": "rsvp",
+        "confidence_min": 0.80
+      }
+    },
+    {
+      "input": "Count me in",
+      "expected": {
+        "task": "rsvp",
+        "confidence_min": 0.85
+      }
+    },
+    {
+      "input": "I'll have to pass",
+      "expected": {
+        "task": "rsvp",
+        "confidence_min": 0.80
+      }
+    },
+    {
+      "input": "Maybe... let me check my calendar",
+      "expected": {
+        "task": "rsvp",
+        "confidence_min": 0.30,
+        "note": "Ambiguous - should prompt for clarification"
+      }
+    },
+    {
+      "input": "I think I can make it",
+      "expected": {
+        "task": "rsvp",
+        "confidence_min": 0.50,
+        "note": "Ambiguous word 'think' - lower confidence"
+      }
+    }
+  ],
+  "task": [
+    {
+      "input": "Homework is due Friday",
+      "expected": {
+        "task": "task",
+        "confidence_min": 0.85
+      }
+    },
+    {
+      "input": "We have a test on Monday",
+      "expected": {
+        "task": "task",
+        "confidence_min": 0.85
+      }
+    },
+    {
+      "input": "Complete Chapter 5 by next week",
+      "expected": {
+        "task": "task",
+        "confidence_min": 0.80
+      }
+    },
+    {
+      "input": "Quiz tomorrow on algebra",
+      "expected": {
+        "task": "task",
+        "confidence_min": 0.85
+      }
+    },
+    {
+      "input": "Assignment deadline is March 15",
+      "expected": {
+        "task": "task",
+        "confidence_min": 0.90
+      }
+    },
+    {
+      "input": "Practice problems due before our next session",
+      "expected": {
+        "task": "task",
+        "confidence_min": 0.75
+      }
+    },
+    {
+      "input": "Essay needs to be submitted by Friday",
+      "expected": {
+        "task": "task",
+        "confidence_min": 0.85
+      }
+    },
+    {
+      "input": "Study guide for midterm next Thursday",
+      "expected": {
+        "task": "task",
+        "confidence_min": 0.80
+      }
+    },
+    {
+      "input": "Remember to finish the worksheet",
+      "expected": {
+        "task": "task",
+        "confidence_min": 0.70
+      }
+    },
+    {
+      "input": "Lab report due in 3 days",
+      "expected": {
+        "task": "task",
+        "confidence_min": 0.85
+      }
+    }
+  ],
+  "urgent": [
+    {
+      "input": "URGENT: Need to cancel today's session",
+      "expected": {
+        "task": "urgent",
+        "confidence_min": 0.90
+      }
+    },
+    {
+      "input": "Emergency - can we reschedule ASAP?",
+      "expected": {
+        "task": "urgent",
+        "confidence_min": 0.90
+      }
+    },
+    {
+      "input": "Please respond immediately about tomorrow",
+      "expected": {
+        "task": "urgent",
+        "confidence_min": 0.80
+      }
+    },
+    {
+      "input": "cancel session urgent",
+      "expected": {
+        "task": "urgent",
+        "confidence_min": 0.85
+      }
+    }
+  ],
+  "normal": [
+    {
+      "input": "Thanks for the help!",
+      "expected": {
+        "task": null,
+        "confidence_min": 0.85
+      }
+    },
+    {
+      "input": "How are you doing?",
+      "expected": {
+        "task": null,
+        "confidence_min": 0.90
+      }
+    },
+    {
+      "input": "Great job on the test!",
+      "expected": {
+        "task": null,
+        "confidence_min": 0.85
+      }
+    },
+    {
+      "input": "See you later",
+      "expected": {
+        "task": null,
+        "confidence_min": 0.90
+      }
+    },
+    {
+      "input": "That makes sense now",
+      "expected": {
+        "task": null,
+        "confidence_min": 0.85
+      }
+    },
+    {
+      "input": "Got it, thanks!",
+      "expected": {
+        "task": null,
+        "confidence_min": 0.90
+      }
+    },
+    {
+      "input": "The formula was really helpful",
+      "expected": {
+        "task": null,
+        "confidence_min": 0.85
+      }
+    },
+    {
+      "input": "I understand the concept better now",
+      "expected": {
+        "task": null,
+        "confidence_min": 0.80
+      }
+    }
+  ]
+}
+

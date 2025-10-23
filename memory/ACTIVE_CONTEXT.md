@@ -8,12 +8,13 @@
 > 
 > These guides provide instant context for any development task.
 
-## Current Milestone: MVP COMPLETE + Remote Push Notifications ✅ - Phase 6 & 7 Done
-All 11 MVP features + 15 bonus features implemented. Remote push notifications via Cloud Functions + APNs/FCM now live.
-Production-ready codebase with true remote push delivery, friends-first UX, and WhatsApp-quality offline messaging.
-Latest commit: 5d3b702 (main branch)
+## Current Milestone: JellyDM UI Transformation Complete ✅ - Phase 8 (PRs 01-05)
+MessageAI MVP complete. Now transformed to JellyDM - tutor-focused messaging platform with AI-powered scheduling.
+All 5 PR UI scaffolding complete: 5-tab navigation, AI-aware chat, Schedule tab, Tasks tab, Assistant dashboard.
+~3,263 lines of new UI code. Ready for AI orchestrator integration.
+Latest work: PR-01 through PR-05 (Oct 23, 2025)
 
-## What's Working (Phase 1-6 Complete)
+## What's Working (Phase 1-8 Complete)
 - ✅ Expo Router file-based routing (nested app/app/ structure)
 - ✅ Email/password authentication (Google Sign-In removed)
 - ✅ Auth state management via AuthContext
@@ -291,7 +292,7 @@ import { addFriend } from '@/services/friendService';
 - Native folders regenerated with new bundle ID
 - Package versions updated for compatibility
 
-### Phase 7: Remote Push Notifications (Latest)
+### Phase 7: Remote Push Notifications
 - Created Firebase Cloud Functions project (functions/)
 - Implemented sendMessageNotification Cloud Function
 - Triggers on message onCreate in Firestore
@@ -305,4 +306,40 @@ import { addFriend } from '@/services/friendService';
 - Added expo-device dependency
 - Updated Firestore rules for pushToken field updates
 - Comprehensive setup guide: PUSH-NOTIFICATIONS-SETUP.md
+
+### Phase 8: JellyDM UI Transformation (Latest - Oct 23, 2025)
+- Transformed MessageAI into tutor-focused messaging platform
+- **PR-01:** 5-tab navigation (Chats/Schedule/Tasks/Assistant/Profile)
+  - TabIcon component with Ionicons
+  - SectionHeader reusable component
+  - Empty states for new tabs
+- **PR-02:** AI-aware chat UI
+  - AssistantBubble (purple theme) for AI messages
+  - StatusChip (4 variants: pending/confirmed/declined/conflict)
+  - Inline cards: EventCard, DeadlineCard, ConflictWarning, RSVPButtons
+  - AIQuickActions bottom sheet (4 actions)
+  - Extended Message type with meta field (EventMeta, DeadlineMeta, etc.)
+  - useThreadStatus hook for RSVP state
+- **PR-03:** Schedule tab
+  - CalendarHeader with week navigation
+  - EventList with day grouping
+  - EventDetailsSheet modal
+  - AddLessonModal with AI parsing placeholder
+  - FAB component (reusable)
+  - useEvents hook (7 mock events)
+- **PR-04:** Tasks tab
+  - DeadlineList (Overdue/Upcoming/Completed sections)
+  - DeadlineCreateModal with assignee selector
+  - ProgressRing component
+  - useDeadlines hook (8 mock deadlines + actions)
+  - Smart date formatting and color coding
+- **PR-05:** Assistant tab
+  - InsightCard widget component
+  - InsightsGrid responsive layout (2 col / 1 col)
+  - AssistantActionRow quick actions
+  - 5 calculated insights from mock data
+  - Personalized dashboard
+- **Total:** 33 new components/hooks, ~3,263 lines of code
+- **Status:** All UI complete, ready for AI orchestrator
+- **Documentation:** JellyDM_UI.md - Complete mock tracking guide
 

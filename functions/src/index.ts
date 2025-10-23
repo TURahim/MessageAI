@@ -1,6 +1,13 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { Expo, ExpoPushMessage } from 'expo-server-sdk';
+import { onDocumentCreated } from 'firebase-functions/v2/firestore';
+import * as logger from 'firebase-functions/logger';
+import { analyzeMessage } from './ai/messageAnalyzer';
+import { embedMessage } from './rag/embeddingService';
+
+// Export admin viewer (PR3)
+export { viewFailedOps } from './admin/failedOpsViewer';
 
 // Initialize Firebase Admin
 admin.initializeApp();
@@ -144,4 +151,142 @@ export const sendMessageNotification = functions.firestore
       // Don't throw - allow message to be created even if notifications fail
     }
   });
+
+/**
+ * Cloud Function: Analyze messages for AI processing (PR1 - Gating Only)
+ * Triggers on: /conversations/{conversationId}/messages/{messageId} onCreate
+ * 
+ * Phase 1 (PR1): Just gating classifier
+ * Phase 2 (PR2-3): Add RAG + full tool calling
+ */
+export const onMessageCreated = onDocumentCreated({
+  document: 'conversations/{conversationId}/messages/{messageId}',
+  region: 'us-central1',
+  timeoutSeconds: 30,
+  memory: '256MiB',
+}, async (event) => {
+  const messageId = event.params.messageId;
+  const conversationId = event.params.conversationId;
+  const messageData = event.data?.data();
+
+  if (!messageData) {
+    logger.warn('⚠️ No message data found');
+    return;
+  }
+
+  // Skip messages from assistant (avoid loops)
+  if (messageData.senderId === 'assistant') {
+    logger.info('⏭️ Skipping assistant message');
+    return;
+  }
+
+  // Skip non-text messages (images don't need AI)
+  if (messageData.type !== 'text' || !messageData.text) {
+    logger.info('⏭️ Skipping non-text message', { type: messageData.type });
+    return;
+  }
+
+  try {
+    // Check for manual override in metadata
+    const bypassGating = messageData.meta?.bypassGating === true;
+
+    // Analyze message with gating classifier
+    const analysis = await analyzeMessage({
+      id: messageId,
+      conversationId,
+      senderId: messageData.senderId,
+      text: messageData.text,
+      createdAt: messageData.serverTimestamp?.toDate() || new Date(),
+      meta: messageData.meta,
+    }, bypassGating);
+
+    if (analysis.shouldProcess) {
+      logger.info('🚀 Message requires AI processing', {
+        task: analysis.gating.task,
+        confidence: analysis.gating.confidence,
+      });
+
+      // TODO (PR2-3): Process with full AI pipeline
+      // await processMessageWithAI(message, analysis.gating);
+    } else {
+      logger.info('✅ Message gated out', {
+        reason: analysis.reason,
+        task: analysis.gating.task,
+        confidence: analysis.gating.confidence,
+      });
+    }
+  } catch (error: any) {
+    logger.error('❌ Error analyzing message', {
+      messageId: messageId.substring(0, 8),
+      error: error.message,
+      stack: error.stack,
+    });
+    // Don't throw - allow message creation even if AI processing fails
+  }
+});
+
+/**
+ * Cloud Function: Generate embeddings for messages (PR2 - RAG Pipeline)
+ * Triggers on: /conversations/{conversationId}/messages/{messageId} onCreate
+ * 
+ * Batches upserts every 30s for cost efficiency (via batching in extension)
+ * Stores in /vector_messages collection for RAG retrieval
+ */
+export const generateMessageEmbedding = onDocumentCreated({
+  document: 'conversations/{conversationId}/messages/{messageId}',
+  region: 'us-central1',
+  timeoutSeconds: 60,
+  memory: '512MiB',
+}, async (event) => {
+  const messageId = event.params.messageId;
+  const conversationId = event.params.conversationId;
+  const messageData = event.data?.data();
+
+  if (!messageData) {
+    logger.warn('⚠️ No message data found');
+    return;
+  }
+
+  // Only embed text messages
+  if (messageData.type !== 'text' || !messageData.text) {
+    logger.info('⏭️ Skipping non-text message for embedding', { type: messageData.type });
+    return;
+  }
+
+  // Skip assistant messages (don't embed our own responses)
+  if (messageData.senderId === 'assistant') {
+    logger.info('⏭️ Skipping assistant message for embedding');
+    return;
+  }
+
+  try {
+    // Generate embedding
+    const embedding = await embedMessage(messageData.text);
+
+    // Store in vector_messages collection
+    await admin.firestore().collection('vector_messages').doc(messageId).set({
+      content: messageData.text,
+      embedding,
+      metadata: {
+        conversationId,
+        senderId: messageData.senderId,
+        timestamp: messageData.serverTimestamp || admin.firestore.FieldValue.serverTimestamp(),
+        messageType: messageData.type,
+      },
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    logger.info('✅ Embedding stored', {
+      messageId: messageId.substring(0, 8),
+      conversationId: conversationId.substring(0, 12),
+      dimensions: embedding.length,
+    });
+  } catch (error: any) {
+    logger.error('❌ Embedding generation/storage failed', {
+      messageId: messageId.substring(0, 8),
+      error: error.message,
+    });
+    // Don't throw - allow message creation even if embedding fails
+  }
+});
 

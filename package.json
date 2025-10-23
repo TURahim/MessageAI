@@ -9,5 +9,8 @@
     "overrides": {
       "react-test-renderer": "19.1.0"
     }
+  },
+  "dependencies": {
+    "@google-cloud/functions-framework": "^4.0.0"
   }
 }

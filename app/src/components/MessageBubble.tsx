@@ -1,7 +1,12 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Animated, Alert } from 'react-native';
 import { Message } from '@/types/index';
 import ImageMessage from './ImageMessage';
+import AssistantBubble from './AssistantBubble';
+import EventCard from './EventCard';
+import DeadlineCard from './DeadlineCard';
+import ConflictWarning from './ConflictWarning';
+import RSVPButtons from './RSVPButtons';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import dayjs from 'dayjs';
@@ -135,9 +140,83 @@ export default function MessageBubble({
     };
   };
 
+  // Determine if this is an assistant/system message
+  const isAssistantMessage = message.senderId === 'assistant' || message.meta?.role === 'assistant' || message.meta?.role === 'system';
+
   // Determine if this is an image message
   const isImageMessage = message.type === 'image' && message.media;
 
+  // BEGIN MOCK_CARD_HANDLERS
+  // TODO: Replace these with real backend calls
+  // See JellyDMTasklist.md PR6.4, PR6.5 for replacement code
+  // Handle inline card actions (mock for now)
+  const handleEventPress = () => {
+    // MOCK: handleEventPress
+    Alert.alert('Event Details', 'Event details will open here once AI orchestrator is connected.');
+  };
+
+  const handleDeadlinePress = () => {
+    Alert.alert('Deadline Details', 'Deadline details will open here once AI orchestrator is connected.');
+  };
+
+  const handleMarkDone = () => {
+    Alert.alert('Mark Done', 'Deadline marked as done (mock action)');
+  };
+
+  // BEGIN MOCK_RSVP_HANDLERS
+  const handleRSVPAccept = () => {
+    Alert.alert('RSVP', 'You accepted the invite (mock action)');
+  };
+
+  const handleRSVPDecline = () => {
+    Alert.alert('RSVP', 'You declined the invite (mock action)');
+  };
+  // END MOCK_RSVP_HANDLERS
+
+  const handleConflictSelect = (index: number) => {
+    // MOCK: handleConflictSelect
+    Alert.alert('Alternative Selected', `You selected alternative #${index + 1} (mock action)`);
+  };
+  // END MOCK_CARD_HANDLERS
+
+  // Render assistant message with inline cards
+  if (isAssistantMessage) {
+    return (
+      <AssistantBubble message={message}>
+        {/* Event card */}
+        {message.meta?.event && (
+          <EventCard event={message.meta.event} onPress={handleEventPress} />
+        )}
+        
+        {/* RSVP buttons */}
+        {message.meta?.rsvp && (
+          <RSVPButtons
+            onAccept={handleRSVPAccept}
+            onDecline={handleRSVPDecline}
+          />
+        )}
+        
+        {/* Deadline card */}
+        {message.meta?.deadline && (
+          <DeadlineCard
+            deadline={message.meta.deadline}
+            onMarkDone={handleMarkDone}
+            onPress={handleDeadlinePress}
+          />
+        )}
+        
+        {/* Conflict warning */}
+        {message.meta?.conflict && (
+          <ConflictWarning
+            conflict={message.meta.conflict}
+            onSelectAlternative={handleConflictSelect}
+          />
+        )}
+      </AssistantBubble>
+    );
+  }
+
+  // Regular user message
   return (
     <View style={[styles.container, isOwn ? styles.ownContainer : styles.otherContainer]}>
       <View style={[styles.bubble, isOwn ? styles.ownBubble : styles.otherBubble, message.status === 'failed' && styles.failedBubble]}>
