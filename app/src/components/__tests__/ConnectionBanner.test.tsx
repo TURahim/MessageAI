@@ -65,7 +65,7 @@ describe('ConnectionBanner', () => {
     });
 
     const { getByText } = render(<ConnectionBanner />);
-    expect(getByText('Messages will send when connection is restored')).toBeTruthy();
+    expect(getByText('Messages are queued and will sync automatically')).toBeTruthy();
   });
 });
 

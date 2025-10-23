@@ -1,5 +1,5 @@
 // Mock Firebase config before importing
-jest.mock('../firebaseConfig', () => ({
+jest.mock('@/lib/firebaseConfig', () => ({
   firebaseConfig: {
     apiKey: 'test-api-key',
     authDomain: 'test.firebaseapp.com',
