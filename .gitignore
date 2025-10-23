@@ -47,6 +47,6 @@ firebase-debug.log
 firestore-debug.log
 ui-debug.log
 
-# Firebase config (should be in .env)
-**/firebaseConfig.ts
-**/firebaseConfig.js
+# Firebase config (firebaseConfig.ts now uses env vars, safe to commit)
+# **/firebaseConfig.ts (removed from gitignore)
+# **/firebaseConfig.js (removed from gitignore)
