@@ -1,7 +1,8 @@
 import * as Notifications from 'expo-notifications';
+import * as Device from 'expo-device';
 import { Platform } from 'react-native';
 import { router } from 'expo-router';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from '@/lib/firebase';
 
 /**
@@ -64,10 +65,19 @@ async function shouldSuppressNotification(conversationId?: string): Promise<bool
 }
 
 /**
- * Request notification permissions
+ * Register device for remote push notifications
+ * Gets Expo push token and stores in Firestore for Cloud Functions to use
  */
-export async function requestNotificationPermissions(): Promise<boolean> {
+export async function registerForPushNotifications(userId: string): Promise<string | null> {
   try {
+    // Check if physical device (push doesn't work on simulator)
+    if (!Device.isDevice) {
+      console.warn('⚠️ Push notifications require a physical device or dev build');
+      console.warn('   Simulator/Expo Go will not receive remote push notifications');
+      return null;
+    }
+
+    // Request permissions
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
 
@@ -77,61 +87,49 @@ export async function requestNotificationPermissions(): Promise<boolean> {
     }
 
     if (finalStatus !== 'granted') {
-      console.warn('⚠️ Notification permissions not granted');
-      return false;
+      console.warn('⚠️ Push notification permissions denied');
+      return null;
     }
 
-    console.log('✅ Notification permissions granted');
-    return true;
+    console.log('✅ Push notification permissions granted');
+
+    // Get Expo push token
+    const tokenData = await Notifications.getExpoPushTokenAsync({
+      projectId: 'e0362f41-e619-4df8-ad3a-4dbcff0ce438', // From app.json extra.eas.projectId
+    });
+
+    const pushToken = tokenData.data;
+    console.log('📱 Expo push token obtained:', pushToken.substring(0, 20) + '...');
+
+    // Store token in Firestore (Cloud Functions will use this)
+    const userRef = doc(db, 'users', userId);
+    await updateDoc(userRef, {
+      pushToken,
+      pushTokenUpdatedAt: serverTimestamp(),
+    });
+
+    console.log('✅ Push token registered and stored in Firestore');
+    console.log('   Cloud Functions will use this token to send remote push notifications');
+
+    return pushToken;
   } catch (error) {
-    console.error('❌ Failed to request notification permissions:', error);
-    return false;
+    console.error('❌ Failed to register for push notifications:', error);
+    return null;
   }
 }
 
 /**
- * Show a local notification for a new message
- * Automatically suppressed if user is viewing the conversation
+ * REMOVED: Local notification scheduling
+ * 
+ * Push notifications are now sent via Firebase Cloud Functions:
+ * 1. Message created in Firestore
+ * 2. Cloud Function (sendMessageNotification) triggers
+ * 3. Function sends remote push via Expo Push API
+ * 4. APNs/FCM delivers to device
+ * 5. Foreground handler (setNotificationHandler above) displays notification
+ * 
+ * This provides true remote push notifications that work in foreground and background.
  */
-export async function showMessageNotification(
-  conversationId: string,
-  senderName: string,
-  messageText: string,
-  messageType: 'text' | 'image' = 'text'
-): Promise<void> {
-  try {
-    // Don't show notification for own messages
-    const messageFromSelf = false; // Caller should check this before calling
-
-    if (messageFromSelf) {
-      console.log('🔕 Skipping notification - message from self');
-      return;
-    }
-
-    const body = messageType === 'image' ? '📷 Image' : messageText;
-
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: senderName,
-        body: body,
-        data: {
-          conversationId,
-          type: 'message',
-        },
-        sound: Platform.OS === 'ios' ? 'default' : undefined,
-      },
-      trigger: null, // Show immediately
-    });
-
-    console.log('🔔 Notification scheduled:', {
-      conversationId: conversationId.substring(0, 12),
-      sender: senderName,
-    });
-  } catch (error) {
-    console.warn('Failed to show notification:', error);
-    // Don't throw - notifications should be non-blocking
-  }
-}
 
 /**
  * Setup notification tap handler

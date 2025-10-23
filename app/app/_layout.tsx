@@ -3,8 +3,7 @@ import { useEffect } from 'react';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { usePresence } from '@/hooks/usePresence';
 import { useAuth } from '@/hooks/useAuth';
-import { useGlobalNotificationListener } from '@/hooks/useGlobalNotificationListener';
-import { requestNotificationPermissions, setupNotificationTapHandler } from '@/services/notificationService';
+import { registerForPushNotifications, setupNotificationTapHandler } from '@/services/notificationService';
 
 function AppContent() {
   const { user, loading } = useAuth();
@@ -15,21 +14,21 @@ function AppContent() {
   // Pass undefined to skip when user is null (prevents permission errors)
   usePresence(user ? null : undefined);
 
-  // Global notification listener - watches ALL conversations for new messages
-  useGlobalNotificationListener(user?.uid);
-
-  // Setup notifications when user is authenticated
+  // Setup remote push notifications when user is authenticated
   useEffect(() => {
     if (user) {
-      // Request permissions and setup tap handler
       const setupNotifications = async () => {
-        const granted = await requestNotificationPermissions();
-        if (granted) {
+        // Register for remote push notifications (gets and stores Expo push token)
+        const pushToken = await registerForPushNotifications(user.uid);
+
+        if (pushToken) {
+          // Setup tap handler for when notifications are tapped
           setupNotificationTapHandler();
-          console.log('✅ Notifications initialized');
-          console.log('🔔 Global notification listener active - watching all conversations');
+          console.log('✅ Remote push notifications initialized');
+          console.log('   Device registered with Expo Push Service');
+          console.log('   Cloud Functions will send notifications via APNs/FCM');
         } else {
-          console.warn('⚠️ Notification permissions denied by user');
+          console.warn('⚠️ Push notifications not available (simulator or permissions denied)');
         }
       };
 

@@ -37,7 +37,7 @@ A production-quality real-time messaging application with offline support, optim
 - ✅ Modern attachment modal (camera/gallery picker)
 - ✅ Friends-first UX model with add/remove friends
 - ✅ User profile screens with real-time presence
-- ✅ Foreground notifications with smart suppression
+- ✅ Remote push notifications via Firebase Cloud Functions + Expo Push Service (APNs/FCM)
 - ✅ WhatsApp-style message status ("Sending...", ✓, ✓✓)
 - ✅ Skeleton loaders for better UX
 - ✅ Error handling with user-friendly messages
@@ -194,7 +194,14 @@ MessageAI/
    firebase deploy --only firestore:rules,storage:rules
    ```
 
-5. **Start the app**
+5. **Deploy Cloud Functions** (Required for push notifications)
+   ```bash
+   cd functions
+   npm install
+   firebase deploy --only functions
+   ```
+
+6. **Start the app**
    ```bash
    cd app
    pnpm start
@@ -204,6 +211,8 @@ MessageAI/
    - `i` for iOS simulator
    - `a` for Android emulator
    - `w` for web browser
+
+   **⚠️ Note:** Push notifications require a **development build** on a **physical device**. See `PUSH-NOTIFICATIONS-SETUP.md` for details.
 
 ---
 

@@ -27,7 +27,6 @@ import { useMarkAsRead } from "@/hooks/useMarkAsRead";
 import { useMessages } from "@/hooks/useMessages";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { uploadImage } from "@/services/mediaService";
-import { showMessageNotification } from "@/services/notificationService";
 import { Conversation } from "@/types/index";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -381,42 +380,10 @@ export default function ChatRoomScreen() {
     }
   }, [conversation, otherUserName, currentUserId, navigation, conversationId]);
 
-  // Trigger notifications for new messages (uses messages from useMessages hook)
-  useEffect(() => {
-    let previousMessageIds = new Set<string>();
-
-    const checkNewMessages = async () => {
-      const newMessageIds = new Set(messages.map(m => m.id));
-      const addedMessages = messages.filter(
-        m => !previousMessageIds.has(m.id) && m.senderId !== currentUserId
-      );
-
-      // Show notifications for new messages from others
-      if (addedMessages.length > 0 && previousMessageIds.size > 0) {
-        for (const message of addedMessages) {
-          try {
-            const senderDoc = await getDoc(doc(db, 'users', message.senderId));
-            const senderName = senderDoc.exists() 
-              ? senderDoc.data().displayName || 'Someone'
-              : 'Someone';
-
-            await showMessageNotification(
-              conversationId,
-              senderName,
-              message.text,
-              message.type
-            );
-          } catch (error) {
-            console.warn('Failed to show notification:', error);
-          }
-        }
-      }
-
-      previousMessageIds = newMessageIds;
-    };
-
-    checkNewMessages();
-  }, [messages, conversationId, currentUserId]);
+  // NOTE: Push notifications are now handled by Firebase Cloud Functions
+  // When a message is created, the Cloud Function automatically sends
+  // remote push notifications via Expo Push Service → APNs/FCM
+  // No client-side notification triggering needed
 
   const handleSend = async (text: string) => {
     if (!text.trim()) return;

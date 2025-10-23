@@ -40,6 +40,8 @@ export interface User {
   photoURL: string | null;
   bio?: string; // Short user description/status
   friends: string[]; // Array of friend UIDs
+  pushToken?: string; // Expo push token for remote notifications
+  pushTokenUpdatedAt?: Timestamp; // When push token was last updated
   presence: UserPresence;
   createdAt?: Timestamp;
 }
