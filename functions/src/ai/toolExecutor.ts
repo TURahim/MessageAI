@@ -309,23 +309,121 @@ async function handleScheduleCheckConflicts(params: ScheduleCheckConflictsInput)
 }
 
 async function handleRSVPCreateInvite(params: RSVPCreateInviteInput): Promise<RSVPCreateInviteOutput> {
-  // TODO (PR7): Implement with rsvpService
-  logger.info('📧 rsvp.create_invite called (TODO: implement in PR7)', params);
-  
-  return {
-    success: false,
-    error: 'NOT_IMPLEMENTED: rsvp.create_invite will be implemented in PR7',
-  };
+  const { eventId, conversationId, message } = params;
+
+  logger.info('📧 rsvp.create_invite called', {
+    eventId: eventId.substring(0, 8),
+    conversationId: conversationId.substring(0, 12),
+  });
+
+  try {
+    // Create assistant message with RSVP invite
+    // This message will have meta.event + meta.rsvp which triggers
+    // EventCard and RSVPButtons rendering in the UI
+    
+    const messageRef = await admin.firestore()
+      .collection('conversations')
+      .doc(conversationId)
+      .collection('messages')
+      .add({
+        senderId: 'assistant',
+        type: 'text',
+        text: message,
+        meta: {
+          role: 'assistant',
+          eventId,
+          rsvp: {
+            eventId,
+            responses: {}, // Empty initially, filled as users respond
+          },
+        },
+        clientTimestamp: admin.firestore.FieldValue.serverTimestamp(),
+        serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
+        status: 'sent',
+        retryCount: 0,
+        readBy: [],
+        readCount: 0,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+    logger.info('✅ RSVP invite created', {
+      messageId: messageRef.id.substring(0, 8),
+      eventId: eventId.substring(0, 8),
+    });
+
+    return {
+      success: true,
+      messageId: messageRef.id,
+    };
+  } catch (error: any) {
+    logger.error('❌ RSVP invite creation failed', {
+      error: error.message,
+      eventId,
+    });
+
+    throw new Error(`RSVP_CREATE_FAILED: ${error.message}`);
+  }
 }
 
 async function handleRSVPRecordResponse(params: RSVPRecordResponseInput): Promise<RSVPRecordResponseOutput> {
-  // TODO (PR7): Implement with rsvpService
-  logger.info('✓ rsvp.record_response called (TODO: implement in PR7)', params);
-  
-  return {
-    success: false,
-    error: 'NOT_IMPLEMENTED: rsvp.record_response will be implemented in PR7',
-  };
+  const { eventId, userId, response } = params;
+
+  logger.info('✓ rsvp.record_response called', {
+    eventId: eventId.substring(0, 8),
+    userId: userId.substring(0, 8),
+    response,
+  });
+
+  try {
+    // Update event with RSVP response
+    const eventRef = admin.firestore().collection('events').doc(eventId);
+    
+    await eventRef.update({
+      [`rsvps.${userId}`]: {
+        response,
+        respondedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    // Determine new event status based on responses
+    const eventDoc = await eventRef.get();
+    const eventData = eventDoc.data();
+    const rsvps = eventData?.rsvps || {};
+    
+    // Simple logic: if all participants responded with 'accepted', status is 'confirmed'
+    const participants = eventData?.participants || [];
+    const allAccepted = participants.every((pid: string) => rsvps[pid]?.response === 'accepted');
+    const anyDeclined = Object.values(rsvps).some((r: any) => r.response === 'declined');
+    
+    let updatedStatus: 'pending' | 'confirmed' | 'declined' = 'pending';
+    if (allAccepted && Object.keys(rsvps).length === participants.length) {
+      updatedStatus = 'confirmed';
+    } else if (anyDeclined) {
+      updatedStatus = 'declined';
+    }
+
+    // Update event status
+    await eventRef.update({ status: updatedStatus });
+
+    logger.info('✅ RSVP recorded and status updated', {
+      eventId: eventId.substring(0, 8),
+      userId: userId.substring(0, 8),
+      updatedStatus,
+    });
+
+    return {
+      success: true,
+      updatedStatus,
+    };
+  } catch (error: any) {
+    logger.error('❌ RSVP recording failed', {
+      error: error.message,
+      eventId,
+    });
+
+    throw new Error(`RSVP_RECORD_FAILED: ${error.message}`);
+  }
 }
 
 async function handleTaskCreate(params: TaskCreateInput): Promise<TaskCreateOutput> {
