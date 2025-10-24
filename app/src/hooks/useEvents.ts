@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Event } from '@/components/EventListItem';
+import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import dayjs from 'dayjs';
 
 /**
@@ -29,11 +31,8 @@ export function useEvents(userId: string | null, selectedDate?: Date) {
     setLoading(true);
 
     // Real Firestore listener
-    const { collection: firestoreCollection, query: firestoreQuery, where, orderBy, onSnapshot } = require('firebase/firestore');
-    const { db } = require('@/lib/firebase');
-
-    const eventsRef = firestoreCollection(db, 'events');
-    const q = firestoreQuery(
+    const eventsRef = collection(db, 'events');
+    const q = query(
       eventsRef,
       where('participants', 'array-contains', userId),
       orderBy('startTime', 'asc')
@@ -41,8 +40,8 @@ export function useEvents(userId: string | null, selectedDate?: Date) {
 
     const unsubscribe = onSnapshot(
       q,
-      (snapshot: any) => {
-        const eventsData: Event[] = snapshot.docs.map((doc: any) => ({
+      (snapshot) => {
+        const eventsData: Event[] = snapshot.docs.map((doc) => ({
           id: doc.id,
           title: doc.data().title,
           startTime: doc.data().startTime.toDate(),
@@ -57,7 +56,7 @@ export function useEvents(userId: string | null, selectedDate?: Date) {
         setLoading(false);
         console.log(`✅ Loaded ${eventsData.length} events from Firestore`);
       },
-      (error: Error) => {
+      (error) => {
         console.error('❌ Error loading events:', error);
         setLoading(false);
       }
