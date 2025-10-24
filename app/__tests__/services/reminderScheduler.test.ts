@@ -72,7 +72,7 @@ describe('Reminder Scheduler', () => {
       const key = generateCompositeKey('event', 'evt123', 'user456', '24h_before');
 
       expect(key).toBe('event_evt123_user456_24h_before');
-      expect(key.split('_').length).toBe(4);
+      expect(key.split('_').length).toBe(5); // 5 parts because "24h_before" contains underscore
     });
   });
 
