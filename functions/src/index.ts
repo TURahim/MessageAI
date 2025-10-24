@@ -255,8 +255,26 @@ export const onMessageCreated = onDocumentCreated({
         );
       }
 
-      // TODO (PR2-3): Process with full AI pipeline
-      // await processMessageWithAI(message, analysis.gating);
+      // Full AI orchestration for scheduling and RSVP
+      if (analysis.gating.task === 'scheduling' || analysis.gating.task === 'rsvp') {
+        logger.info('🎯 Triggering full AI orchestration', {
+          task: analysis.gating.task,
+        });
+
+        const { processMessageWithAI } = await import('./ai/messageAnalyzer');
+        await processMessageWithAI(
+          {
+            id: messageId,
+            conversationId,
+            senderId: messageData.senderId,
+            senderName: messageData.senderName,
+            text: messageData.text,
+            createdAt: messageData.serverTimestamp?.toDate() || new Date(),
+            meta: messageData.meta,
+          },
+          analysis.gating
+        );
+      }
     } else {
       logger.info('✅ Message gated out', {
         reason: analysis.reason,

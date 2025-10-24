@@ -19,7 +19,7 @@ import type {
   VectorDocument,
   SearchOptions,
   SearchResult,
-} from '@/types/aiTypes';
+} from '../../types/aiTypes';
 
 export class MockVectorRetriever implements VectorRetriever {
   private documents: Map<string, VectorDocument> = new Map();

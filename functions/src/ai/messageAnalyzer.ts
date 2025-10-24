@@ -156,33 +156,112 @@ export async function processMessageWithAI(
     confidence: gatingResult.confidence,
   });
 
-  // TODO (PR2): Get RAG context from vector store
-  // const ragContext = await getContext(message.text, message.conversationId, retriever);
+  try {
+    // Step 1: Get RAG context from vector store
+    const { getContext } = await import('../rag/contextBuilder');
+    const { MockVectorRetriever } = await import('../../../app/src/services/vector/mockRetriever');
+    
+    const retriever = new MockVectorRetriever([]);
+    const ragContext = await getContext(
+      message.text,
+      message.conversationId,
+      retriever,
+      { topK: 10, maxTokens: 2048 }
+    );
 
-  // TODO (PR3-4): Call GPT-4 with RAG context + tools
-  // const result = await generateText({
-  //   model: openai('gpt-4-turbo'),
-  //   prompt: buildPrompt(message, ragContext, gatingResult.task),
-  //   tools: allToolSchemas,
-  // });
+    // Build context string from documents
+    const contextString = ragContext.documents
+      .map((doc, i) => `${i + 1}. ${doc.content}`)
+      .join('\n');
 
-  // TODO (PR3): Parse and execute tool calls
-  // for (const toolCall of result.toolCalls) {
-  //   const toolResult = await executeTool(toolCall.toolName, toolCall.args);
-  //   if (!toolResult.success) {
-  //     logger.error('Tool execution failed', toolResult.error);
-  //   }
-  // }
+    logger.info('📚 RAG context retrieved', {
+      documentsFound: ragContext.documents.length,
+      contextLength: contextString.length,
+    });
 
-  // TODO (PR3): Create assistant messages with mapped meta
-  // const meta = mapToolOutputsToMeta(toolOutputs, additionalData);
-  // await executeTool('messages.post_system', {
-  //   conversationId: message.conversationId,
-  //   text: assistantResponse,
-  //   meta,
-  // });
+    // Step 2: Build orchestration prompt
+    const { buildOrchestrationPrompt } = await import('./promptTemplates');
+    
+    // Type guard: ensure we have a valid task type for orchestration
+    if (gatingResult.task !== 'scheduling' && gatingResult.task !== 'rsvp') {
+      logger.warn('⚠️ Invalid task type for orchestration', {
+        task: gatingResult.task,
+      });
+      return;
+    }
+    
+    const prompt = buildOrchestrationPrompt(
+      message.text,
+      contextString,
+      gatingResult.task,
+      message.senderId,
+      message.conversationId
+    );
 
-  // Placeholder log for now
-  logger.info('✅ AI processing complete (handlers will be implemented in PR4-11)');
+    // Step 3: Call GPT-4 with tools
+    const { generateText } = await import('ai');
+    const { openai } = await import('@ai-sdk/openai');
+    const toolSchemas = await import('./toolSchemas');
+    
+    const tools = toolSchemas.getToolsForTaskType(gatingResult.task) as any;
+
+    logger.info('🔧 Calling GPT-4 with tools', {
+      task: gatingResult.task,
+      toolCount: Object.keys(tools).length,
+    });
+
+    const result = await generateText({
+      model: openai('gpt-4-turbo'),
+      prompt,
+      tools: tools as any, // Type assertion for flexibility
+      maxSteps: 5, // Allow multi-step workflows
+      temperature: 0.7,
+    });
+
+    logger.info('✅ GPT-4 orchestration complete', {
+      toolCalls: result.toolCalls?.length || 0,
+      text: result.text.substring(0, 100),
+    });
+
+    // Step 4: Execute tool calls
+    const { executeTool } = await import('./toolExecutor');
+    
+    if (result.toolCalls && result.toolCalls.length > 0) {
+      for (const toolCall of result.toolCalls) {
+        logger.info('🔧 Executing tool', {
+          tool: toolCall.toolName,
+          args: JSON.stringify(toolCall.args).substring(0, 100),
+        });
+
+        const toolResult = await executeTool(
+          toolCall.toolName as any,
+          toolCall.args
+        );
+        
+        if (!toolResult.success) {
+          logger.error('❌ Tool execution failed', {
+            tool: toolCall.toolName,
+            error: toolResult.error,
+          });
+        } else {
+          logger.info('✅ Tool executed successfully', {
+            tool: toolCall.toolName,
+          });
+        }
+      }
+    } else {
+      logger.warn('⚠️ No tool calls generated', {
+        responseText: result.text,
+      });
+    }
+
+    logger.info('✅ Full AI processing complete');
+  } catch (error: any) {
+    logger.error('❌ AI processing failed', {
+      error: error.message,
+      stack: error.stack,
+    });
+    // Don't throw - allow message to be created even if AI processing fails
+  }
 }
 

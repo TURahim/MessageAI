@@ -145,3 +145,35 @@ export const TIMEZONE_REQUIRED_TOOLS: string[] = [
   'schedule.check_conflicts',
 ];
 
+/**
+ * Get relevant tools based on task type
+ * Used by GPT-4 orchestration to limit tool selection
+ */
+export function getToolsForTaskType(taskType: string) {
+  switch (taskType) {
+    case 'scheduling':
+      return {
+        'time.parse': timeParseSchema,
+        'schedule.create_event': scheduleCreateEventSchema,
+        'schedule.check_conflicts': scheduleCheckConflictsSchema,
+        'messages.post_system': messagesPostSystemSchema,
+      };
+    case 'rsvp':
+      return {
+        'rsvp.record_response': rsvpRecordResponseSchema,
+        'messages.post_system': messagesPostSystemSchema,
+      };
+    case 'task':
+      return {
+        'task.create': taskCreateSchema,
+        'messages.post_system': messagesPostSystemSchema,
+      };
+    case 'urgent':
+      return {
+        'messages.post_system': messagesPostSystemSchema,
+      };
+    default:
+      return allToolSchemas; // Fallback to all tools
+  }
+}
+

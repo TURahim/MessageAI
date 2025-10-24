@@ -182,3 +182,80 @@ Keep it concise (3-4 sentences max), professional, and parent-friendly.
 
 Messages:`;
 
+/**
+ * Orchestration Prompt Builder
+ * 
+ * Builds prompt for GPT-4 with RAG context and available tools
+ * Used for scheduling and RSVP workflows
+ */
+export function buildOrchestrationPrompt(
+  message: string,
+  ragContext: string,
+  taskType: 'scheduling' | 'rsvp',
+  userId: string,
+  conversationId: string
+): string {
+  const currentTime = new Date().toISOString();
+  
+  if (taskType === 'scheduling') {
+    return `You are a scheduling assistant for a tutoring platform. Help create a calendar event from this message.
+
+**User Message:** "${message}"
+
+**Conversation Context (Recent Messages):**
+${ragContext || 'No recent context available'}
+
+**Current Time:** ${currentTime}
+**Timezone:** America/New_York (default - will be provided in tool calls)
+**User ID:** ${userId}
+**Conversation ID:** ${conversationId}
+
+**Your Task:**
+1. Parse the date/time from the message using time.parse tool
+2. Create a calendar event using schedule.create_event tool
+3. If conflicts detected, alternatives will be suggested automatically
+
+**Instructions:**
+- Extract event title (e.g., "Math Tutoring", "Physics Review", "English Lesson")
+- Parse date and time (handle "tomorrow", "friday", "next week", etc.)
+- Default duration: 1 hour if not specified
+- Include both participants in the conversation
+- Be conversational and helpful in responses
+
+**Available Tools:**
+- time.parse: Parse natural language dates
+- schedule.create_event: Create calendar event
+- schedule.check_conflicts: Check for conflicts (optional)
+- messages.post_system: Post assistant message
+
+Proceed to extract the scheduling information and create the event.`;
+  } else if (taskType === 'rsvp') {
+    return `You are helping process an RSVP response to an event invitation.
+
+**User Message:** "${message}"
+
+**Conversation Context:**
+${ragContext || 'No recent context available'}
+
+**Your Task:**
+1. Find the most recent pending event in this conversation
+2. Determine if this is accept or decline
+3. Record the response using rsvp.record_response tool
+
+**Instructions:**
+- Look for event invitations in the context
+- "yes", "sounds good", "that works" → accept
+- "no", "can't make it", "sorry" → decline
+- If unclear, ask for clarification
+
+**Available Tools:**
+- rsvp.record_response: Record RSVP (accept/decline)
+- messages.post_system: Post assistant message
+
+User ID: ${userId}
+Conversation ID: ${conversationId}`;
+  }
+
+  return '';
+}
+
