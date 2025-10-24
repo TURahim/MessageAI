@@ -87,5 +87,51 @@ service cloud.firestore {
       allow delete: if request.auth != null &&
         request.auth.uid == resource.data.createdBy;
     }
+
+    // --- DEADLINES COLLECTION (PR11) ---
+    // Tasks, homework, and deadlines
+    match /deadlines/{deadlineId} {
+      // Rule 1: Assignee can read their deadlines
+      allow read: if request.auth != null && 
+        request.auth.uid == resource.data.assignee;
+      
+      // Rule 2: Creator (tutor) can read deadlines they created
+      allow read: if request.auth != null &&
+        request.auth.uid == resource.data.createdBy;
+      
+      // Rule 3: Authenticated users can create deadlines
+      allow create: if request.auth != null &&
+        request.auth.uid == request.resource.data.createdBy;
+      
+      // Rule 4: Assignee and creator can update deadline (for toggling complete)
+      allow update: if request.auth != null && (
+        request.auth.uid == resource.data.assignee ||
+        request.auth.uid == resource.data.createdBy
+      );
+      
+      // Rule 5: Assignee and creator can delete deadline
+      allow delete: if request.auth != null && (
+        request.auth.uid == resource.data.assignee ||
+        request.auth.uid == resource.data.createdBy
+      );
+    }
+
+    // --- URGENT_NOTIFICATIONS_LOG COLLECTION (PR9) ---
+    // Analytics for urgency detection
+    match /urgent_notifications_log/{logId} {
+      allow read: if request.auth != null && request.auth.token.admin == true;
+      allow write: if false; // Only Cloud Functions via admin SDK
+    }
+
+    // --- NOTIFICATION_OUTBOX COLLECTION (PR12) ---
+    // Outbox pattern for reliable reminder delivery
+    match /notification_outbox/{docId} {
+      // Users can read their own reminders (for debugging)
+      allow read: if request.auth != null && 
+        request.auth.uid == resource.data.targetUserId;
+      
+      // Only Cloud Functions can write (scheduler + worker)
+      allow write: if false; // Only Cloud Functions via admin SDK
+    }
   }
 }

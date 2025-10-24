@@ -1,11 +1,23 @@
 import { useState, useEffect } from 'react';
 import { Deadline } from '@/components/DeadlineList';
-import dayjs from 'dayjs';
+import {
+  collection,
+  query,
+  where,
+  orderBy,
+  onSnapshot,
+  Timestamp,
+} from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import {
+  addDeadline as addDeadlineService,
+  toggleComplete as toggleCompleteService,
+  deleteDeadline as deleteDeadlineService,
+} from '@/services/task/taskService';
 
 /**
  * Hook to fetch deadlines for the current user
- * Currently returns mock data and manages local state
- * Will be replaced with real Firestore queries when backend is set up
+ * Wired to Firestore /deadlines collection (PR11)
  * 
  * @param userId - Current user's ID
  * @returns Deadlines array, loading state, and actions
@@ -13,150 +25,118 @@ import dayjs from 'dayjs';
 export function useDeadlines(userId: string | null) {
   const [deadlines, setDeadlines] = useState<Deadline[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // BEGIN MOCK_DEADLINES
-    // TODO: Replace this entire block with Firestore onSnapshot listener
-    // See JellyDMTasklist.md PR11.2 for replacement code
-    const loadDeadlines = async () => {
-      setLoading(true);
-
-      // Simulate async data fetch
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      // Generate mock deadlines
-      const mockDeadlines: Deadline[] = [
-        {
-          id: 'deadline-1',
-          title: 'Math Chapter 5 Homework',
-          dueDate: dayjs().subtract(2, 'day').toDate(), // Overdue
-          assignee: 'user-1',
-          assigneeName: 'Sarah Johnson',
-          conversationId: 'conv-1',
-          completed: false,
-          createdAt: dayjs().subtract(5, 'day').toDate(),
-        },
-        {
-          id: 'deadline-2',
-          title: 'Physics Lab Report',
-          dueDate: dayjs().add(0, 'day').hour(17).minute(0).toDate(), // Today
-          assignee: 'user-2',
-          assigneeName: 'Michael Chen',
-          conversationId: 'conv-2',
-          completed: false,
-          createdAt: dayjs().subtract(3, 'day').toDate(),
-        },
-        {
-          id: 'deadline-3',
-          title: 'Chemistry Quiz Prep',
-          dueDate: dayjs().add(2, 'day').hour(14).minute(0).toDate(), // Upcoming
-          assignee: 'user-1',
-          assigneeName: 'Sarah Johnson',
-          conversationId: 'conv-1',
-          completed: false,
-          createdAt: dayjs().subtract(1, 'day').toDate(),
-        },
-        {
-          id: 'deadline-4',
-          title: 'English Essay Draft',
-          dueDate: dayjs().add(5, 'day').hour(23).minute(59).toDate(), // Upcoming
-          assignee: 'user-3',
-          assigneeName: 'Emily Davis',
-          conversationId: 'conv-3',
-          completed: false,
-          createdAt: dayjs().subtract(2, 'day').toDate(),
-        },
-        {
-          id: 'deadline-5',
-          title: 'History Reading Assignment',
-          dueDate: dayjs().subtract(5, 'day').toDate(), // Overdue
-          assignee: 'user-4',
-          assigneeName: 'John Smith',
-          conversationId: 'conv-4',
-          completed: true, // Completed despite being overdue
-          createdAt: dayjs().subtract(10, 'day').toDate(),
-        },
-        {
-          id: 'deadline-6',
-          title: 'SAT Practice Test',
-          dueDate: dayjs().add(7, 'day').hour(10).minute(0).toDate(), // Upcoming
-          assignee: 'user-5',
-          assigneeName: 'Anna Williams',
-          conversationId: 'conv-5',
-          completed: false,
-          createdAt: dayjs().subtract(1, 'day').toDate(),
-        },
-        {
-          id: 'deadline-7',
-          title: 'Biology Chapter Review',
-          dueDate: dayjs().subtract(1, 'day').toDate(), // Overdue
-          assignee: 'user-1',
-          assigneeName: 'Sarah Johnson',
-          conversationId: 'conv-1',
-          completed: true, // Completed
-          createdAt: dayjs().subtract(4, 'day').toDate(),
-        },
-        {
-          id: 'deadline-8',
-          title: 'Spanish Vocab Flashcards',
-          dueDate: dayjs().add(3, 'day').hour(16).minute(0).toDate(), // Upcoming
-          assignee: 'user-6',
-          assigneeName: 'David Lee',
-          conversationId: 'conv-6',
-          completed: false,
-          createdAt: dayjs().subtract(2, 'day').toDate(),
-        },
-      ];
-
-      setDeadlines(mockDeadlines);
-      setLoading(false);
-    };
-
-    if (userId) {
-      loadDeadlines();
-    } else {
+    // PR11: Real-time Firestore listener (replaced mock data)
+    if (!userId) {
       setDeadlines([]);
       setLoading(false);
+      return;
     }
-    // END MOCK_DEADLINES
+
+    setLoading(true);
+    setError(null);
+
+    // Query deadlines where user is assignee
+    const deadlinesRef = collection(db, 'deadlines');
+    const q = query(
+      deadlinesRef,
+      where('assignee', '==', userId),
+      orderBy('dueDate', 'asc')
+    );
+
+    // Real-time listener
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const fetchedDeadlines: Deadline[] = snapshot.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            title: data.title,
+            dueDate: (data.dueDate as Timestamp).toDate(),
+            assignee: data.assignee,
+            assigneeName: data.assigneeName,
+            conversationId: data.conversationId,
+            completed: data.completed || false,
+            createdAt: (data.createdAt as Timestamp)?.toDate() || new Date(),
+          };
+        });
+
+        setDeadlines(fetchedDeadlines);
+        setLoading(false);
+
+        console.log('✅ Deadlines updated from Firestore', {
+          count: fetchedDeadlines.length,
+          userId: userId.substring(0, 8),
+        });
+      },
+      (err) => {
+        console.error('❌ Error fetching deadlines:', err);
+        setError(err.message);
+        setLoading(false);
+      }
+    );
+
+    // Cleanup listener on unmount
+    return () => {
+      console.log('🧹 Cleaning up deadlines listener');
+      unsubscribe();
+    };
   }, [userId]);
 
-  // BEGIN MOCK_ACTIONS
-  // TODO: Replace these with taskService calls to Firestore
-  // See JellyDMTasklist.md PR11.3 for replacement code
-  // Add a new deadline (mock - adds to local state)
-  const addDeadline = (deadline: Omit<Deadline, 'id' | 'createdAt' | 'completed'>) => {
-    const newDeadline: Deadline = {
-      ...deadline,
-      id: `deadline-${Date.now()}`,
-      completed: false,
-      createdAt: new Date(),
-    };
+  // PR11: Real actions using taskService (replaced mock actions)
+  const addDeadline = async (deadline: Omit<Deadline, 'id' | 'createdAt' | 'completed'>) => {
+    if (!userId) {
+      console.error('❌ Cannot add deadline: No user ID');
+      return;
+    }
 
-    setDeadlines((prev) => [...prev, newDeadline]);
+    try {
+      await addDeadlineService({
+        title: deadline.title,
+        dueDate: deadline.dueDate,
+        assignee: deadline.assignee,
+        assigneeName: deadline.assigneeName,
+        conversationId: deadline.conversationId,
+        createdBy: userId,
+      });
+      // Real-time listener will update the UI
+    } catch (err: any) {
+      console.error('❌ Failed to add deadline:', err);
+      setError(err.message);
+    }
   };
 
-  // Mark deadline as complete/incomplete
-  const toggleComplete = (deadlineId: string) => {
-    setDeadlines((prev) =>
-      prev.map((d) =>
-        d.id === deadlineId ? { ...d, completed: !d.completed } : d
-      )
-    );
+  const toggleComplete = async (deadlineId: string) => {
+    try {
+      await toggleCompleteService(deadlineId);
+      // Real-time listener will update the UI
+    } catch (err: any) {
+      console.error('❌ Failed to toggle deadline:', err);
+      setError(err.message);
+    }
   };
 
-  // Delete a deadline
-  const deleteDeadline = (deadlineId: string) => {
-    setDeadlines((prev) => prev.filter((d) => d.id !== deadlineId));
+  const deleteDeadline = async (deadlineId: string) => {
+    try {
+      await deleteDeadlineService(deadlineId);
+      // Real-time listener will update the UI
+    } catch (err: any) {
+      console.error('❌ Failed to delete deadline:', err);
+      setError(err.message);
+    }
   };
-  // END MOCK_ACTIONS
 
   return {
     deadlines,
     loading,
+    error,
     addDeadline,
     toggleComplete,
     deleteDeadline,
   };
 }
+
 

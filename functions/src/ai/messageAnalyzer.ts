@@ -10,12 +10,15 @@
  */
 
 import { gateMessage, logGatingDecision, type GatingResult } from './aiGatingService';
+import { classifyUrgency, type UrgencyResult } from './urgencyClassifier';
+import { extractTask, createDeadlineFromExtraction, type TaskExtractionResult } from './taskExtractor';
 import * as logger from 'firebase-functions/logger';
 
 export interface Message {
   id: string;
   conversationId: string;
   senderId: string;
+  senderName?: string;
   text: string;
   createdAt: Date;
   meta?: any;
@@ -23,6 +26,8 @@ export interface Message {
 
 export interface AnalysisResult {
   gating: GatingResult;
+  urgency?: UrgencyResult;
+  task?: TaskExtractionResult;
   shouldProcess: boolean;
   reason?: string;
 }
@@ -89,11 +94,46 @@ export async function analyzeMessage(
     confidence: gating.confidence,
   });
 
+  // Step 2: Check for urgency (PR9)
+  let urgency: UrgencyResult | undefined;
+
+  if (gating.task === 'urgent') {
+    // Gating detected urgency - run detailed classification
+    urgency = await classifyUrgency(message.text, message.conversationId);
+
+    logger.info('🚨 Urgency classification complete', {
+      isUrgent: urgency.isUrgent,
+      confidence: urgency.confidence,
+      category: urgency.category,
+      shouldNotify: urgency.shouldNotify,
+    });
+  }
+
+  // Step 3: Check for task/deadline extraction (PR11)
+  let task: TaskExtractionResult | undefined;
+
+  if (gating.task === 'task') {
+    // Gating detected task - run extraction
+    // Use user's timezone (default to America/New_York if not available)
+    const timezone = 'America/New_York'; // TODO: Get from user profile
+
+    task = await extractTask(message.text, timezone);
+
+    logger.info('📝 Task extraction complete', {
+      found: task.found,
+      confidence: task.confidence,
+      title: task.title,
+      taskType: task.taskType,
+    });
+  }
+
   // TODO (PR2-3): Add RAG context retrieval + full LLM with tools
   // For now, just return the gating result
 
   return {
     gating,
+    urgency,
+    task,
     shouldProcess: true,
   };
 }

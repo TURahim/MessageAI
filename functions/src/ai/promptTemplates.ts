@@ -24,19 +24,35 @@ Task Types:
 - "scheduling": Mentions specific dates/times for sessions (e.g., "tomorrow at 3pm", "Friday morning", "next week")
 - "rsvp": Response to an invitation (e.g., "yes that works", "can't make it", "I'll be there")
 - "task": Homework/deadline mention (e.g., "due Friday", "test on Monday", "homework by next week")
-- "urgent": Urgent matters (e.g., "URGENT", "cancel session", "emergency", "ASAP reschedule")
+- "urgent": URGENT matters requiring immediate attention (see urgency rules below)
 - null: Normal chat, no action needed (e.g., "how are you", "thanks", "see you later")
 
+Urgency Detection Rules (HIGH PRECISION TARGET - ≥90%):
+ALWAYS mark as "urgent" with confidence ≥0.85:
+  - Explicit: "URGENT", "ASAP", "emergency", "immediately", "right now"
+  - Cancellations: "cancel session", "can't make it today", "need to cancel", "cancel appointment"
+  - Emergency reschedule: "need to reschedule ASAP", "have to move immediately"
+
+SOMETIMES mark as "urgent" with confidence 0.7-0.85 (requires validation):
+  - Time pressure: "running late", "need to change time", "test today", "exam tomorrow"
+  - Same-day issues: mentions of "today" with cancellation/reschedule context
+
+NEVER mark as "urgent":
+  - General questions, even with word "urgent" (e.g., "urgent question about homework")
+  - Future planning without immediate action (e.g., "we should reschedule sometime")
+  - Casual mentions of tests/exams without stress indicators
+
 Confidence Guidelines:
-- 0.9-1.0: Very clear, unambiguous
-- 0.7-0.9: Likely, some context
-- 0.6-0.7: Possible, but unclear
+- 0.9-1.0: Very clear, unambiguous, explicit urgency keywords
+- 0.7-0.9: Likely urgent, has context indicators
+- 0.6-0.7: Possible urgency, needs validation
 - 0.0-0.6: Not confident, skip processing
 
-IMPORTANT:
-- For urgency, be CONSERVATIVE. Prefer false negatives over false positives.
-- Only mark as "urgent" if keywords like "URGENT", "ASAP", "emergency", "cancel" are present WITH clear urgency context.
-- For ambiguous words like "maybe", "might", "should work", set confidence <0.7
+CRITICAL for Urgency:
+- Be EXTREMELY conservative. False positives are costly (unnecessary alerts).
+- Prefer false negatives over false positives.
+- If message has hedging ("maybe", "if possible", "no rush"), reduce confidence significantly.
+- Only high confidence (≥0.85) urgency triggers push notifications.
 
 Message:`;
 

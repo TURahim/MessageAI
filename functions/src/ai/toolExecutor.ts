@@ -264,16 +264,36 @@ async function handleScheduleCreateEvent(params: ScheduleCreateEventInput): Prom
   });
 
   try {
-    // Create event in Firestore
+    // PR10: Check for conflicts BEFORE creating event
+    const { handleEventConflict } = await import('./conflictHandler');
+    
+    const startDate = new Date(startTime);
+    const endDate = new Date(endTime);
+    
+    const conflictResult = await handleEventConflict(
+      {
+        title,
+        startTime: startDate,
+        endTime: endDate,
+        participants,
+        createdBy,
+      },
+      conversationId,
+      timezone
+    );
+
+    // If conflict detected, alternatives are already posted to conversation
+    // Still create the event but mark it with conflict warning
     const eventRef = await admin.firestore().collection('events').add({
       title,
-      startTime: admin.firestore.Timestamp.fromDate(new Date(startTime)),
-      endTime: admin.firestore.Timestamp.fromDate(new Date(endTime)),
+      startTime: admin.firestore.Timestamp.fromDate(startDate),
+      endTime: admin.firestore.Timestamp.fromDate(endDate),
       participants,
-      status: 'pending',
+      status: conflictResult.hasConflict ? 'pending' : 'pending', // Could use 'conflict' status
       conversationId,
       createdBy,
       rsvps: {},
+      hasConflict: conflictResult.hasConflict || false, // Flag for UI
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
@@ -281,11 +301,14 @@ async function handleScheduleCreateEvent(params: ScheduleCreateEventInput): Prom
     logger.info('✅ Event created in Firestore', {
       eventId: eventRef.id,
       title,
+      hasConflict: conflictResult.hasConflict,
     });
 
     return {
       success: true,
       eventId: eventRef.id,
+      hasConflict: conflictResult.hasConflict,
+      conflictMessage: conflictResult.conflictMessage,
     };
   } catch (error: any) {
     logger.error('❌ Event creation failed', {
@@ -298,14 +321,64 @@ async function handleScheduleCreateEvent(params: ScheduleCreateEventInput): Prom
 }
 
 async function handleScheduleCheckConflicts(params: ScheduleCheckConflictsInput): Promise<ScheduleCheckConflictsOutput> {
-  // TODO (PR10): Implement with conflictService
-  logger.info('⚠️ schedule.check_conflicts called (TODO: implement in PR10)', params);
-  
-  return {
-    success: false,
-    hasConflict: false,
-    error: 'NOT_IMPLEMENTED: schedule.check_conflicts will be implemented in PR10',
-  };
+  const { userId, startTime, endTime, timezone } = params;
+
+  logger.info('🔍 schedule.check_conflicts called', {
+    userId: userId.substring(0, 8),
+    startTime,
+    endTime,
+    timezone,
+  });
+
+  try {
+    // PR10: Use conflict handler to detect conflicts
+    const { handleEventConflict } = await import('./conflictHandler');
+    
+    const startDate = new Date(startTime);
+    const endDate = new Date(endTime);
+    
+    const conflictResult = await handleEventConflict(
+      {
+        title: 'Proposed Session', // Placeholder
+        startTime: startDate,
+        endTime: endDate,
+        participants: [userId],
+        createdBy: userId,
+      },
+      '', // No conversation context for check-only
+      timezone
+    );
+
+    if (conflictResult.hasConflict) {
+      logger.info('⚠️ Conflicts detected', {
+        count: conflictResult.alternatives?.length || 0,
+      });
+
+      return {
+        success: true,
+        hasConflict: true,
+        conflictMessage: conflictResult.conflictMessage,
+        suggestedAlternatives: conflictResult.alternatives?.map(alt => ({
+          startTime: alt.startTime.toISOString(),
+          endTime: alt.endTime.toISOString(),
+          reason: alt.reason,
+        })),
+      };
+    }
+
+    logger.info('✅ No conflicts detected');
+
+    return {
+      success: true,
+      hasConflict: false,
+    };
+  } catch (error: any) {
+    logger.error('❌ Conflict check failed', {
+      error: error.message,
+    });
+
+    throw new Error(`SCHEDULE_CHECK_CONFLICTS_FAILED: ${error.message}`);
+  }
 }
 
 async function handleRSVPCreateInvite(params: RSVPCreateInviteInput): Promise<RSVPCreateInviteOutput> {
@@ -427,23 +500,220 @@ async function handleRSVPRecordResponse(params: RSVPRecordResponseInput): Promis
 }
 
 async function handleTaskCreate(params: TaskCreateInput): Promise<TaskCreateOutput> {
-  // TODO (PR11): Implement with taskService
-  logger.info('✅ task.create called (TODO: implement in PR11)', params);
-  
-  return {
-    success: false,
-    error: 'NOT_IMPLEMENTED: task.create will be implemented in PR11',
-  };
+  const { title, dueDate, assignee, conversationId, createdBy } = params;
+
+  logger.info('📝 task.create called', {
+    title,
+    assignee: assignee.substring(0, 8),
+    dueDate,
+  });
+
+  try {
+    // Get assignee name for display
+    const assigneeDoc = await admin.firestore().doc(`users/${assignee}`).get();
+    const assigneeName = assigneeDoc.data()?.displayName || 'Unknown';
+
+    // Create deadline in Firestore
+    const deadlineRef = await admin.firestore().collection('deadlines').add({
+      title,
+      dueDate: admin.firestore.Timestamp.fromDate(new Date(dueDate)),
+      assignee,
+      assigneeName,
+      conversationId,
+      completed: false,
+      createdBy,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    logger.info('✅ Deadline created in Firestore', {
+      deadlineId: deadlineRef.id,
+      title,
+    });
+
+    // Post assistant message with deadline metadata
+    await admin.firestore()
+      .collection('conversations')
+      .doc(conversationId)
+      .collection('messages')
+      .add({
+        senderId: 'assistant',
+        senderName: 'JellyDM Assistant',
+        type: 'text',
+        text: `📝 I've added "${title}" to ${assigneeName}'s task list (due ${new Date(dueDate).toLocaleDateString()}).`,
+        clientTimestamp: admin.firestore.FieldValue.serverTimestamp(),
+        serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
+        status: 'sent',
+        retryCount: 0,
+        readBy: [],
+        readCount: 0,
+        meta: {
+          role: 'assistant',
+          deadlineId: deadlineRef.id,
+          deadline: {
+            deadlineId: deadlineRef.id,
+            title,
+            dueDate: admin.firestore.Timestamp.fromDate(new Date(dueDate)),
+            assignee: assigneeName,
+          },
+        },
+      });
+
+    return {
+      success: true,
+      taskId: deadlineRef.id,
+    };
+  } catch (error: any) {
+    logger.error('❌ Task creation failed', {
+      error: error.message,
+      title,
+    });
+
+    throw new Error(`TASK_CREATE_FAILED: ${error.message}`);
+  }
 }
 
 async function handleRemindersSchedule(params: RemindersScheduleInput): Promise<RemindersScheduleOutput> {
-  // TODO (PR12): Implement with reminderService
-  logger.info('⏰ reminders.schedule called (TODO: implement in PR12)', params);
-  
-  return {
-    success: false,
-    error: 'NOT_IMPLEMENTED: reminders.schedule will be implemented in PR12',
-  };
+  const { entityType, entityId, targetUserId, reminderType, scheduledFor } = params;
+
+  logger.info('⏰ reminders.schedule called', {
+    entityType,
+    entityId: entityId.substring(0, 8),
+    targetUserId: targetUserId.substring(0, 8),
+    reminderType,
+  });
+
+  try {
+    // Get entity details for notification content
+    let title = '';
+    let body = '';
+    let data: Record<string, any> = {};
+
+    if (entityType === 'event') {
+      const eventDoc = await admin.firestore().collection('events').doc(entityId).get();
+      if (!eventDoc.exists) {
+        throw new Error('EVENT_NOT_FOUND');
+      }
+
+      const event = eventDoc.data();
+      const eventStart = event?.startTime.toDate();
+      
+      if (reminderType === '24h') {
+        title = `Reminder: ${event?.title}`;
+        body = `You have "${event?.title}" tomorrow at ${formatTime(eventStart)}`;
+      } else if (reminderType === '2h') {
+        title = `Reminder: ${event?.title} in 2 hours`;
+        body = `Your session starts at ${formatTime(eventStart)}`;
+      }
+
+      data = {
+        eventId: entityId,
+        conversationId: event?.conversationId,
+        type: 'event_reminder',
+      };
+    } else if (entityType === 'task') {
+      const taskDoc = await admin.firestore().collection('deadlines').doc(entityId).get();
+      if (!taskDoc.exists) {
+        throw new Error('TASK_NOT_FOUND');
+      }
+
+      const task = taskDoc.data();
+      const dueDate = task?.dueDate.toDate();
+
+      title = `Reminder: ${task?.title}`;
+      body = `Due ${formatDate(dueDate)}`;
+      
+      data = {
+        deadlineId: entityId,
+        conversationId: task?.conversationId,
+        type: 'task_reminder',
+      };
+    }
+
+    // Get user's push token
+    const userDoc = await admin.firestore().doc(`users/${targetUserId}`).get();
+    const pushToken = userDoc.data()?.pushToken;
+
+    if (!pushToken) {
+      logger.warn('📵 No push token for user', {
+        userId: targetUserId.substring(0, 8),
+      });
+      return {
+        success: false,
+        error: 'NO_PUSH_TOKEN',
+      };
+    }
+
+    // Generate composite key for idempotency
+    const compositeKey = `${entityType}_${entityId}_${targetUserId}_${reminderType}`;
+
+    // Check if reminder already exists
+    const existingDoc = await admin.firestore()
+      .collection('notification_outbox')
+      .doc(compositeKey)
+      .get();
+
+    if (existingDoc.exists && existingDoc.data()?.status === 'sent') {
+      logger.info('⏭️ Reminder already sent', {
+        compositeKey: compositeKey.substring(0, 40),
+      });
+      return {
+        success: true,
+        reminderId: compositeKey,
+      };
+    }
+
+    // Create outbox document
+    await admin.firestore()
+      .collection('notification_outbox')
+      .doc(compositeKey)
+      .set({
+        entityType,
+        entityId,
+        targetUserId,
+        reminderType,
+        title,
+        body,
+        data,
+        scheduledFor: admin.firestore.Timestamp.fromDate(new Date(scheduledFor)),
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        status: 'pending',
+        attempts: 0,
+        pushToken,
+      });
+
+    logger.info('✅ Reminder scheduled', {
+      compositeKey: compositeKey.substring(0, 40),
+      scheduledFor,
+    });
+
+    return {
+      success: true,
+      reminderId: compositeKey,
+    };
+  } catch (error: any) {
+    logger.error('❌ Reminder scheduling failed', {
+      error: error.message,
+    });
+
+    throw new Error(`REMINDERS_SCHEDULE_FAILED: ${error.message}`);
+  }
+}
+
+function formatTime(date: Date): string {
+  return date.toLocaleString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+}
+
+function formatDate(date: Date): string {
+  return date.toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  });
 }
 
 async function handleMessagesPostSystem(params: MessagesPostSystemInput): Promise<MessagesPostSystemOutput> {

@@ -1,10 +1,15 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { Expo, ExpoPushMessage } from 'expo-server-sdk';
-import { onDocumentCreated } from 'firebase-functions/v2/firestore';
+import { onDocumentCreated, onDocumentWritten } from 'firebase-functions/v2/firestore';
+import { onSchedule } from 'firebase-functions/v2/scheduler';
 import * as logger from 'firebase-functions/logger';
 import { analyzeMessage } from './ai/messageAnalyzer';
 import { embedMessage } from './rag/embeddingService';
+import { sendUrgentNotifications } from './notifications/urgentNotifier';
+import { scheduleEventReminders, scheduleTaskReminders } from './notifications/reminderScheduler';
+import { processOutboxNotification } from './notifications/outboxWorker';
+import type { ReminderOutboxDoc } from './notifications/reminderScheduler';
 
 // Export admin viewer (PR3)
 export { viewFailedOps } from './admin/failedOpsViewer';
@@ -206,6 +211,48 @@ export const onMessageCreated = onDocumentCreated({
         confidence: analysis.gating.confidence,
       });
 
+      // PR9: Handle urgent messages
+      if (analysis.urgency && analysis.urgency.shouldNotify) {
+        logger.info('🚨 Urgent message detected - sending notifications', {
+          category: analysis.urgency.category,
+          confidence: analysis.urgency.confidence,
+        });
+
+        // Send urgent push notifications immediately
+        await sendUrgentNotifications({
+          messageId,
+          conversationId,
+          senderId: messageData.senderId,
+          senderName: messageData.senderName || 'Someone',
+          messageText: messageData.text,
+          urgency: analysis.urgency,
+        });
+      }
+
+      // PR11: Handle task/deadline extraction
+      if (analysis.task && analysis.task.found && analysis.task.confidence >= 0.7) {
+        logger.info('📝 Task detected - creating deadline', {
+          title: analysis.task.title,
+          confidence: analysis.task.confidence,
+          taskType: analysis.task.taskType,
+        });
+
+        const { createDeadlineFromExtraction } = await import('./ai/taskExtractor');
+
+        // Determine assignee (could be sender or mentioned participant)
+        // For now, use conversation participants (first non-sender)
+        const convDoc = await admin.firestore().doc(`conversations/${conversationId}`).get();
+        const participants = convDoc.data()?.participants || [];
+        const assignee = participants.find((p: string) => p !== messageData.senderId) || messageData.senderId;
+
+        await createDeadlineFromExtraction(
+          conversationId,
+          analysis.task,
+          assignee,
+          messageData.senderId
+        );
+      }
+
       // TODO (PR2-3): Process with full AI pipeline
       // await processMessageWithAI(message, analysis.gating);
     } else {
@@ -287,6 +334,78 @@ export const generateMessageEmbedding = onDocumentCreated({
       error: error.message,
     });
     // Don't throw - allow message creation even if embedding fails
+  }
+});
+
+/**
+ * Cloud Function: Scheduled Reminder Scheduler (PR12)
+ * Runs every hour to schedule reminders for upcoming events and tasks
+ */
+export const scheduledReminderJob = onSchedule({
+  schedule: 'every 1 hours',
+  region: 'us-central1',
+  timeoutSeconds: 120,
+  memory: '256MiB',
+}, async () => {
+  logger.info('⏰ Running scheduled reminder job');
+
+  try {
+    // Schedule event reminders (24h and 2h before)
+    const eventReminders = await scheduleEventReminders();
+
+    // Schedule task reminders (due today, overdue)
+    const taskReminders = await scheduleTaskReminders();
+
+    logger.info('✅ Reminder scheduling complete', {
+      eventReminders,
+      taskReminders,
+      total: eventReminders + taskReminders,
+    });
+  } catch (error: any) {
+    logger.error('❌ Reminder scheduling failed', {
+      error: error.message,
+      stack: error.stack,
+    });
+  }
+});
+
+/**
+ * Cloud Function: Outbox Worker (PR12)
+ * Triggers when notification_outbox documents are written
+ * Sends push notifications with retry logic
+ */
+export const outboxWorker = onDocumentWritten({
+  document: 'notification_outbox/{docId}',
+  region: 'us-central1',
+  timeoutSeconds: 30,
+  memory: '256MiB',
+}, async (event) => {
+  const docId = event.params.docId;
+  const afterData = event.data?.after?.data();
+
+  if (!afterData) {
+    logger.info('⏭️ Document deleted, skipping');
+    return;
+  }
+
+  const outboxDoc = afterData as ReminderOutboxDoc;
+
+  // Only process pending notifications
+  if (outboxDoc.status !== 'pending') {
+    logger.info('⏭️ Not pending, skipping', {
+      docId: docId.substring(0, 40),
+      status: outboxDoc.status,
+    });
+    return;
+  }
+
+  try {
+    await processOutboxNotification(docId, outboxDoc);
+  } catch (error: any) {
+    logger.error('❌ Outbox worker failed', {
+      docId: docId.substring(0, 40),
+      error: error.message,
+    });
   }
 });
 
