@@ -123,12 +123,29 @@ export default function EventDetailsSheet({ visible, event, onClose }: EventDeta
     
     try {
       const eventRef = doc(db, 'events', event.id);
+      
+      // Update RSVP
       await updateDoc(eventRef, {
         [`rsvps.${currentUserId}`]: {
           response: 'accept',
           respondedAt: new Date(),
         },
         updatedAt: new Date(),
+      });
+
+      // Calculate new status
+      const eventDoc = await getDoc(eventRef);
+      const eventData = eventDoc.data();
+      const rsvps = eventData?.rsvps || {};
+      const allParticipants = eventData?.participants || [];
+
+      // If all participants accepted, status = confirmed
+      const allAccepted = allParticipants.every((pid: string) => rsvps[pid]?.response === 'accept');
+      const newStatus = allAccepted ? 'confirmed' : 'pending';
+
+      // Update event status
+      await updateDoc(eventRef, {
+        status: newStatus,
       });
       
       setUserRsvp('accepted');
@@ -144,16 +161,45 @@ export default function EventDetailsSheet({ visible, event, onClose }: EventDeta
     
     try {
       const eventRef = doc(db, 'events', event.id);
+      
+      // Update RSVP
       await updateDoc(eventRef, {
         [`rsvps.${currentUserId}`]: {
           response: 'decline',
           respondedAt: new Date(),
         },
+        status: 'declined', // Immediately set status to declined
         updatedAt: new Date(),
       });
       
       setUserRsvp('declined');
-      Alert.alert('Declined', 'You have declined this event');
+
+      // Send notification message to conversation
+      if (event.conversationId) {
+        const { collection, addDoc, serverTimestamp } = await import('firebase/firestore');
+        const currentUser = auth.currentUser;
+        const userDoc = await getDoc(doc(db, 'users', currentUserId));
+        const userName = userDoc.data()?.displayName || 'Someone';
+
+        await addDoc(collection(db, 'conversations', event.conversationId, 'messages'), {
+          senderId: 'assistant',
+          senderName: 'JellyDM Assistant',
+          type: 'text',
+          text: `📅 ${userName} has declined "${event.title}". The event status has been updated.`,
+          meta: {
+            role: 'system',
+            eventId: event.id,
+          },
+          clientTimestamp: serverTimestamp(),
+          serverTimestamp: serverTimestamp(),
+          status: 'sent',
+          retryCount: 0,
+          readBy: [],
+          readCount: 0,
+        });
+      }
+      
+      Alert.alert('Declined', 'You have declined this event. Other participants have been notified.');
     } catch (error: any) {
       Alert.alert('Error', error.message);
     }
