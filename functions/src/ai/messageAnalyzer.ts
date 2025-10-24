@@ -288,12 +288,20 @@ export async function processMessageWithAI(
     const { openai } = await import('@ai-sdk/openai');
     const toolSchemas = await import('./toolSchemas');
     
-    const tools = toolSchemas.getToolsForTaskType(gatingResult.task) ?? {};
+    const originalTools = toolSchemas.getToolsForTaskType(gatingResult.task) ?? {};
+
+    // Convert tool names: dots to underscores (OpenAI requires ^[a-zA-Z0-9_-]+$)
+    const tools: any = {};
+    for (const [key, value] of Object.entries(originalTools)) {
+      const normalizedKey = key.replace(/\./g, '_'); // "time.parse" → "time_parse"
+      tools[normalizedKey] = value;
+    }
 
     logger.info('🔧 Calling GPT-4 with tools', {
       correlationId,
       task: gatingResult.task,
       toolCount: Object.keys(tools).length,
+      toolNames: Object.keys(tools),
     });
 
     // Round 1: Initial tool call
@@ -320,14 +328,17 @@ export async function processMessageWithAI(
     
     if (round1Result.toolCalls && round1Result.toolCalls.length > 0) {
       for (const toolCall of round1Result.toolCalls) {
+        // Convert tool name back: underscores to dots
+        const originalToolName = toolCall.toolName.replace(/_/g, '.'); // "time_parse" → "time.parse"
+        
         logger.info('🔧 Executing tool', {
           correlationId,
-          tool: toolCall.toolName,
+          tool: originalToolName,
           args: JSON.stringify(toolCall.args).substring(0, 100),
         });
 
         const toolResult = await executeTool(
-          toolCall.toolName as any,
+          originalToolName as any,
           toolCall.args
         );
         
@@ -390,12 +401,15 @@ export async function processMessageWithAI(
       // Execute any additional tool calls from Round 2 (if any)
       if (round2Result.toolCalls && round2Result.toolCalls.length > 0) {
         for (const toolCall of round2Result.toolCalls) {
+          // Convert tool name back: underscores to dots
+          const originalToolName = toolCall.toolName.replace(/_/g, '.');
+          
           logger.info('🔧 Executing Round 2 tool', {
             correlationId,
-            tool: toolCall.toolName,
+            tool: originalToolName,
           });
 
-          await executeTool(toolCall.toolName as any, toolCall.args);
+          await executeTool(originalToolName as any, toolCall.args);
         }
       }
     } else {
