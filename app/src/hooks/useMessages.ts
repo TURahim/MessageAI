@@ -64,6 +64,7 @@ export function useMessages(conversationId: string, currentUserId: string): UseM
             id: doc.id,
             conversationId,
             senderId: data.senderId,
+            senderName: data.senderName, // Include for assistant messages
             type: data.type || 'text',
             text: data.text || '',
             media: data.media || undefined,
@@ -73,6 +74,7 @@ export function useMessages(conversationId: string, currentUserId: string): UseM
             retryCount: data.retryCount || 0,
             readBy: data.readBy || [],
             readCount: data.readCount || 0,
+            meta: data.meta, // Include AI metadata
           } as Message;
         });
 
