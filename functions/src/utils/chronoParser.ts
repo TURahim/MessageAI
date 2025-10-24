@@ -35,9 +35,33 @@ export function parseDateTime(
   const startTime = Date.now();
 
   try {
-    // Parse with chrono-node
+    // Parse with chrono-node configured to prefer future dates
     const now = new Date();
-    const results = chrono.parse(text, now);
+    const customChrono = chrono.casual.clone();
+    
+    // Configure to prefer future dates (don't select past dates for relative expressions)
+    customChrono.refiners.push({
+      refine: (context, results) => {
+        results.forEach((result) => {
+          const resultDate = result.start.date();
+          
+          // If the parsed date is in the past, move it forward by a week
+          if (resultDate < now) {
+            const daysToAdd = 7;
+            const newDate = new Date(resultDate);
+            newDate.setDate(newDate.getDate() + daysToAdd);
+            
+            result.start.assign('day', newDate.getDate());
+            result.start.assign('month', newDate.getMonth() + 1);
+            result.start.assign('year', newDate.getFullYear());
+          }
+        });
+        
+        return results;
+      }
+    });
+    
+    const results = customChrono.parse(text, now);
 
     if (results.length === 0) {
       logger.info('⏰ Chrono: No date found', {
@@ -55,10 +79,10 @@ export function parseDateTime(
     // Check if we have a clear, unambiguous result
     const firstResult = results[0];
     const hasHour = firstResult.start.isCertain('hour');
-    const hasDay = firstResult.start.isCertain('day');
 
     // Single result with specific time = confident parse
-    if (results.length === 1 && hasHour && hasDay) {
+    // We only need certain hour - day can be inferred (Monday, tomorrow, etc.)
+    if (results.length === 1 && hasHour) {
       const startDate = firstResult.start.date();
       let endDate = firstResult.end?.date();
 

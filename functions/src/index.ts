@@ -299,6 +299,13 @@ export const onMessageCreated = onDocumentCreated({
         // Try fast-path for scheduling first
         const { FEATURE_FLAGS } = await import('./config/features');
         
+        logger.info('🔍 Fast-path decision point', {
+          correlationId,
+          USE_FAST_PATH_SCHEDULING: FEATURE_FLAGS.USE_FAST_PATH_SCHEDULING,
+          taskType: analysis.gating.task,
+          willAttemptFastPath: FEATURE_FLAGS.USE_FAST_PATH_SCHEDULING && analysis.gating.task === 'scheduling',
+        });
+        
         if (FEATURE_FLAGS.USE_FAST_PATH_SCHEDULING && analysis.gating.task === 'scheduling') {
           logger.info('⚡ Attempting fast-path scheduling', {
             correlationId,
