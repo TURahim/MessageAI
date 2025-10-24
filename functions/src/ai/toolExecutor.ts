@@ -235,7 +235,7 @@ async function executeToolHandler(toolName: ToolName, params: any): Promise<any>
  */
 
 async function handleTimeParse(params: TimeParseInput): Promise<TimeParseOutput> {
-  const { text, timezone, referenceDate } = params;
+  const { text, timezone } = params;
 
   logger.info('⏰ time.parse called', {
     text: text.substring(0, 50),
@@ -243,70 +243,76 @@ async function handleTimeParse(params: TimeParseInput): Promise<TimeParseOutput>
   });
 
   try {
-    // Import AI SDK and date utilities
-    const { generateObject } = await import('ai');
-    const { openai } = await import('@ai-sdk/openai');
-    const { z } = await import('zod');
-    const { format } = await import('date-fns');
-
-    // Build context for LLM
-    const now = referenceDate ? new Date(referenceDate) : new Date();
-    const nowInTimezone = format(now, 'PPPP'); // e.g., "Monday, January 15th, 2024"
+    // Use chrono-node for deterministic parsing (no LLM!)
+    const { parseDateTime } = await import('../utils/chronoParser');
     
-    const enhancedPrompt = `Today is ${nowInTimezone}. The timezone is ${timezone}.
+    const result = parseDateTime(text, timezone);
 
-Extract the date and time from this message. Calculate relative dates (tomorrow, Friday, next week) based on today's date.
+    if (result.success) {
+      logger.info('✅ time.parse successful (chrono-node)', {
+        text: text.substring(0, 30),
+        dateTime: result.startTime,
+        confidence: result.confidence,
+        usedLLM: false,
+      });
 
-Message: "${text}"
-
-Return the parsed date/time information.`;
-
-    // Use structured output for reliable JSON parsing
-    const result = await generateObject({
-      model: openai('gpt-4-turbo'),
-      schema: z.object({
-        found: z.boolean().describe('Whether a date/time was found in the message'),
-        dateTime: z.string().optional().describe('ISO8601 date/time in UTC if found'),
-        duration: z.number().optional().describe('Duration in minutes if mentioned'),
-        confidence: z.number().min(0).max(1).describe('Confidence score 0-1'),
-        explanation: z.string().optional().describe('Brief explanation of the parsing'),
-      }),
-      prompt: enhancedPrompt,
-      temperature: 0.3, // Deterministic
-      maxTokens: 150,
-    });
-
-    const parsed = result.object;
-
-    if (!parsed.found || !parsed.dateTime) {
       return {
-        success: false,
-        confidence: parsed.confidence,
-        error: 'NO_DATE_FOUND: Could not extract date/time from message',
+        success: true,
+        dateTime: result.startTime!,
+        confidence: result.confidence,
       };
     }
 
-    // Validate the parsed date is in UTC ISO8601 format
-    const parsedDate = new Date(parsed.dateTime);
-    if (isNaN(parsedDate.getTime())) {
+    // If needs disambiguation, fallback to minimal LLM call
+    if (result.needsDisambiguation && result.candidates && result.candidates.length > 0) {
+      logger.info('🔄 time.parse needs disambiguation, using GPT-4o-mini', {
+        text: text.substring(0, 30),
+        candidatesCount: result.candidates.length,
+      });
+
+      const { generateObject } = await import('ai');
+      const { openai } = await import('@ai-sdk/openai');
+      const { z } = await import('zod');
+
+      const disambiguationPrompt = `Pick the most likely date/time for: "${text}"
+
+Candidates:
+${result.candidates.map((c, i) => `${i}. ${c.start}`).join('\n')}
+
+Return the index of the best match.`;
+
+      const choice = await generateObject({
+        model: openai('gpt-4o-mini'),
+        schema: z.object({ chosenIndex: z.number().min(0).max(result.candidates.length - 1) }),
+        prompt: disambiguationPrompt,
+        maxTokens: 50,
+        temperature: 0.3,
+      });
+
+      const chosen = result.candidates[choice.object.chosenIndex] || result.candidates[0];
+      
+      logger.info('✅ time.parse disambiguated', {
+        chosenIndex: choice.object.chosenIndex,
+        dateTime: chosen.start,
+      });
+
       return {
-        success: false,
-        confidence: parsed.confidence,
-        error: 'INVALID_DATE: LLM returned invalid ISO8601 date',
+        success: true,
+        dateTime: chosen.start,
+        confidence: 0.8,
       };
     }
 
-    logger.info('✅ time.parse successful', {
-      text: text.substring(0, 30),
-      dateTime: parsed.dateTime,
-      confidence: parsed.confidence,
-      explanation: parsed.explanation,
+    // Neither deterministic nor disambiguatable
+    logger.warn('❌ time.parse failed', {
+      text: text.substring(0, 50),
+      error: result.error,
     });
 
     return {
-      success: true,
-      dateTime: parsed.dateTime,
-      confidence: parsed.confidence,
+      success: false,
+      confidence: result.confidence,
+      error: result.error || 'NO_DATE_FOUND',
     };
   } catch (error: any) {
     logger.error('❌ time.parse failed', {

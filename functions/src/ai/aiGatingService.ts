@@ -60,6 +60,51 @@ const GATING_CONFIG = {
 };
 
 /**
+ * Fast-path classification heuristic
+ * Detects obvious scheduling messages without LLM
+ */
+const SCHEDULING_KEYWORDS = [
+  'lesson', 'session', 'class', 'tutoring', 'review', 'meeting', 'call'
+];
+
+const TIME_PATTERNS = [
+  /\b\d{1,2}\s*(:|am|pm)/i,  // "5pm", "3:30", "2 pm"
+  /\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i,
+  /\b(tomorrow|today|tonight)\b/i,
+  /\bnext\s+(week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i,
+];
+
+function fastPathClassify(text: string): { 
+  task: TaskType; 
+  confidence: number; 
+  useFastPath: boolean 
+} {
+  const lowerText = text.toLowerCase();
+  
+  // Check for scheduling keywords
+  const hasSessionKeyword = SCHEDULING_KEYWORDS.some(kw => lowerText.includes(kw));
+  
+  // Check for time patterns
+  const hasTimePattern = TIME_PATTERNS.some(pattern => pattern.test(text));
+  
+  // Fast path: scheduling keyword + time pattern
+  if (hasSessionKeyword && hasTimePattern) {
+    return { 
+      task: 'scheduling', 
+      confidence: 0.95, 
+      useFastPath: true 
+    };
+  }
+  
+  // Not obvious enough - use LLM
+  return { 
+    task: null, 
+    confidence: 0, 
+    useFastPath: false 
+  };
+}
+
+/**
  * Gates a message to determine if AI processing is needed
  * 
  * @param text - Message text to classify
@@ -77,6 +122,32 @@ export async function gateMessage(
   options?: { model?: string; bypassGating?: boolean }
 ): Promise<GatingResult> {
   const startTime = Date.now();
+
+  // Try fast-path heuristic first
+  const { FEATURE_FLAGS } = await import('../config/features');
+  
+  if (FEATURE_FLAGS.USE_FAST_PATH_GATING) {
+    const fastPath = fastPathClassify(text);
+    
+    if (fastPath.useFastPath) {
+      const processingTime = Date.now() - startTime;
+      
+      logger.info('⚡ Fast-path gating classification', {
+        task: fastPath.task,
+        confidence: fastPath.confidence,
+        processingTime,
+      });
+      
+      return {
+        task: fastPath.task,
+        confidence: fastPath.confidence,
+        processingTime,
+        modelUsed: 'heuristic',
+        tokensUsed: { input: 0, output: 0 },
+        cost: 0,
+      };
+    }
+  }
 
   // Manual override for testing
   if (options?.bypassGating) {

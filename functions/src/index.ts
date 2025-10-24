@@ -259,14 +259,10 @@ export const onMessageCreated = onDocumentCreated({
       if (analysis.gating.task === 'scheduling' || 
           analysis.gating.task === 'rsvp' ||
           analysis.gating.task === 'reminder') {
-        logger.info('🎯 Triggering full AI orchestration', {
-          task: analysis.gating.task,
-        });
+        
+        const correlationId = messageId.substring(0, 8);
 
         // Post loading message immediately for better UX
-        // Generate correlationId for tracking (same as in messageAnalyzer)
-        const correlationId = messageId.substring(0, 8);
-        
         try {
           await admin.firestore()
             .collection('conversations')
@@ -299,6 +295,49 @@ export const onMessageCreated = onDocumentCreated({
           });
           // Continue with orchestration even if loading message fails
         }
+
+        // Try fast-path for scheduling first
+        const { FEATURE_FLAGS } = await import('./config/features');
+        
+        if (FEATURE_FLAGS.USE_FAST_PATH_SCHEDULING && analysis.gating.task === 'scheduling') {
+          logger.info('⚡ Attempting fast-path scheduling', {
+            correlationId,
+          });
+
+          const { scheduleFastPath } = await import('./ai/fastPathOrchestrator');
+          const fastPathResult = await scheduleFastPath(
+            {
+              id: messageId,
+              conversationId,
+              senderId: messageData.senderId,
+              senderName: messageData.senderName,
+              text: messageData.text,
+              createdAt: messageData.serverTimestamp?.toDate() || new Date(),
+            },
+            correlationId
+          );
+
+          if (fastPathResult.usedFastPath) {
+            logger.info('✅ Fast-path scheduling succeeded', {
+              correlationId,
+              eventId: fastPathResult.eventId,
+              latency: fastPathResult.latency,
+            });
+            return; // Done - skip full LLM orchestration
+          }
+
+          // Fast-path failed, continue to full orchestration
+          logger.warn('⚠️ Fast-path failed, falling back to full LLM orchestration', {
+            correlationId,
+            reason: fastPathResult.reason,
+          });
+        }
+
+        // Full LLM orchestration (fallback or non-scheduling tasks)
+        logger.info('🎯 Triggering full AI orchestration', {
+          task: analysis.gating.task,
+          correlationId,
+        });
 
         const { processMessageWithAI } = await import('./ai/messageAnalyzer');
         await processMessageWithAI(
