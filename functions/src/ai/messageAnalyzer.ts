@@ -11,7 +11,7 @@
 
 import { gateMessage, logGatingDecision, type GatingResult } from './aiGatingService';
 import { classifyUrgency, type UrgencyResult } from './urgencyClassifier';
-import { extractTask, createDeadlineFromExtraction, type TaskExtractionResult } from './taskExtractor';
+import { extractTask, type TaskExtractionResult } from './taskExtractor';
 import * as logger from 'firebase-functions/logger';
 
 export interface Message {

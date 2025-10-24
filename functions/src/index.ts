@@ -11,7 +11,7 @@ import { scheduleEventReminders, scheduleTaskReminders } from './notifications/r
 import { processOutboxNotification } from './notifications/outboxWorker';
 import type { ReminderOutboxDoc } from './notifications/reminderScheduler';
 import { processUnconfirmedEvents } from './ai/autonomousMonitor';
-import { processPostSessionNotes, processLongGapAlerts } from './ai/nudgeGenerator';
+import { processLongGapAlerts } from './ai/nudgeGenerator';
 
 // Export admin viewer (PR3)
 export { viewFailedOps } from './admin/failedOpsViewer';

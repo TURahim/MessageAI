@@ -11,7 +11,7 @@
  */
 
 import * as admin from 'firebase-admin';
-import { Expo, ExpoPushMessage, ExpoPushTicket } from 'expo-server-sdk';
+import { Expo, ExpoPushMessage } from 'expo-server-sdk';
 import * as logger from 'firebase-functions/logger';
 import type { ReminderOutboxDoc } from './reminderScheduler';
 
@@ -75,7 +75,6 @@ export async function processOutboxNotification(
   if (!Expo.isExpoPushToken(outboxDoc.pushToken)) {
     logger.error('❌ Invalid push token', {
       docId: docId.substring(0, 40),
-      pushToken: outboxDoc.pushToken.substring(0, 20),
     });
 
     await updateOutboxStatus(docId, 'failed', outboxDoc.attempts + 1, 'INVALID_PUSH_TOKEN');
@@ -294,25 +293,4 @@ export async function getFailedNotifications(
   }
 }
 
-/**
- * Helper: Format time for display
- */
-function formatTime(date: Date): string {
-  return date.toLocaleString('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-  });
-}
-
-/**
- * Helper: Format date for display
- */
-function formatDate(date: Date): string {
-  return date.toLocaleDateString('en-US', {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-  });
-}
 

@@ -50,6 +50,8 @@ export interface ScheduleCreateEventInput {
 export interface ScheduleCreateEventOutput {
   success: boolean;
   eventId?: string;
+  hasConflict?: boolean;
+  conflictMessage?: string;
   error?: string;
 }
 
@@ -66,6 +68,12 @@ export interface ScheduleCheckConflictsInput {
 export interface ScheduleCheckConflictsOutput {
   success: boolean;
   hasConflict: boolean;
+  conflictMessage?: string;
+  suggestedAlternatives?: Array<{
+    startTime: string;
+    endTime: string;
+    reason: string;
+  }>;
   conflictingEvents?: Array<{
     id: string;
     title: string;
