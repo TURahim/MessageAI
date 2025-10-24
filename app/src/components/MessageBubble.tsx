@@ -213,31 +213,35 @@ export default function MessageBubble({
   // END MOCK_RSVP_HANDLERS
 
   const handleConflictSelect = async (index: number) => {
-    // MOCK: handleConflictSelect - Wire to conflictService (PR10)
-    Alert.alert('Alternative Selected', `You selected alternative #${index + 1}\n\nThis will be wired to create a new event with the selected time in PR10.`);
-    
-    /* REAL IMPLEMENTATION (PR10):
-    if (!message.meta?.conflict?.suggestedAlternatives) return;
-    
-    const alternative = message.meta.conflict.suggestedAlternatives[index];
-    if (!alternative) return;
+    if (!message.meta?.conflict) return;
     
     try {
-      const { selectAlternative } = await import('@/services/schedule/conflictService');
-      const { auth } = await import('@/lib/firebase');
+      const { collection, addDoc, serverTimestamp } = await import('firebase/firestore');
+      const { db, auth } = await import('@/lib/firebase');
       
-      const newEventId = await selectAlternative(
-        message.meta.conflict.conflictId,
-        index,
-        'original-event-id', // Would come from conflict meta
-        auth.currentUser?.uid || ''
-      );
+      // Post reschedule request to backend via a special message
+      await addDoc(collection(db, 'conversations', message.conversationId, 'messages'), {
+        senderId: auth.currentUser?.uid || message.senderId,
+        type: 'text',
+        text: `[SYSTEM_ACTION] Reschedule to alternative ${index}`,
+        meta: {
+          action: 'reschedule_event',
+          conflictId: message.meta.conflict.eventId || message.meta.conflict.conflictId,
+          alternativeIndex: index,
+        },
+        clientTimestamp: serverTimestamp(),
+        serverTimestamp: serverTimestamp(),
+        status: 'sent',
+        readBy: [],
+        readCount: 0,
+        retryCount: 0,
+      });
       
-      Alert.alert('Rescheduled', `Event rescheduled to ${alternative.startTime}`);
+      // Backend will handle the reschedule and post confirmation
+      Alert.alert('Rescheduling', 'Your event is being rescheduled...');
     } catch (error: any) {
-      Alert.alert('Error', error.message);
+      Alert.alert('Error', 'Failed to reschedule. Please try again.');
     }
-    */
   };
   // END MOCK_CARD_HANDLERS
 

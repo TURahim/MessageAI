@@ -10,6 +10,7 @@ export interface Event {
   participants: string[];
   participantNames?: string[];
   status?: 'pending' | 'confirmed' | 'declined';
+  hasConflict?: boolean; // Indicates scheduling conflict
   color?: string;
   conversationId?: string; // Link to conversation (PR5)
 }
@@ -63,14 +64,24 @@ export default function EventListItem({ event, onPress }: EventListItemProps) {
         <Text style={styles.participants}>{getParticipantsText()}</Text>
       </View>
 
-      {/* Status badge */}
-      {event.status && (
-        <View style={[styles.statusBadge, { backgroundColor: `${getStatusColor()}20` }]}>
-          <Text style={[styles.statusText, { color: getStatusColor() }]}>
-            {event.status.charAt(0).toUpperCase() + event.status.slice(1)}
-          </Text>
-        </View>
-      )}
+      <View style={styles.badges}>
+        {/* Status badge */}
+        {event.status && (
+          <View style={[styles.statusBadge, { backgroundColor: `${getStatusColor()}20` }]}>
+            <Text style={[styles.statusText, { color: getStatusColor() }]}>
+              {event.status.charAt(0).toUpperCase() + event.status.slice(1)}
+            </Text>
+          </View>
+        )}
+        
+        {/* Conflict badge */}
+        {event.hasConflict && (
+          <View style={styles.conflictBadge}>
+            <Text style={styles.conflictIcon}>⚠️</Text>
+            <Text style={styles.conflictText}>Conflict</Text>
+          </View>
+        )}
+      </View>
     </TouchableOpacity>
   );
 }
@@ -115,6 +126,10 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#999',
   },
+  badges: {
+    alignItems: 'flex-end',
+    gap: 6,
+  },
   statusBadge: {
     paddingHorizontal: 10,
     paddingVertical: 4,
@@ -123,6 +138,23 @@ const styles = StyleSheet.create({
   statusText: {
     fontSize: 12,
     fontWeight: '600',
+  },
+  conflictBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF3E0',
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  conflictIcon: {
+    fontSize: 12,
+    marginRight: 4,
+  },
+  conflictText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#E65100',
   },
 });
 

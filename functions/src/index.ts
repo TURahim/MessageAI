@@ -194,6 +194,32 @@ export const onMessageCreated = onDocumentCreated({
   }
 
   try {
+    // Check for system actions before gating (reschedule, cancel, etc.)
+    if (messageData.meta?.action === 'reschedule_event') {
+      logger.info('🔄 Reschedule action detected', {
+        conflictId: messageData.meta.conflictId,
+        alternativeIndex: messageData.meta.alternativeIndex,
+      });
+
+      const { handleAlternativeSelection } = await import('./ai/conflictHandler');
+      await handleAlternativeSelection(
+        messageData.meta.conflictId,
+        messageData.meta.alternativeIndex,
+        conversationId,
+        messageData.senderId
+      );
+
+      // Delete the system action message (don't show in chat)
+      await admin.firestore()
+        .collection('conversations')
+        .doc(conversationId)
+        .collection('messages')
+        .doc(messageId)
+        .delete();
+      
+      return;
+    }
+
     // Check for manual override in metadata
     const bypassGating = messageData.meta?.bypassGating === true;
 

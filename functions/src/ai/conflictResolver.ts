@@ -596,6 +596,7 @@ export async function postConflictWarning(
           role: 'assistant',
           conflict: {
             conflictId,
+            eventId: eventId || conflictId, // Store eventId for reschedule actions
             message: conflictMessage,
             suggestedAlternatives: alternatives.map(alt => ({
               startTime: admin.firestore.Timestamp.fromDate(alt.startTime),
@@ -605,6 +606,24 @@ export async function postConflictWarning(
           },
         },
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+    // Store alternatives in conflict_logs for retrieval in Schedule tab
+    await admin.firestore()
+      .collection('conflict_logs')
+      .add({
+        eventId: eventId || conflictId,
+        conversationId,
+        conflictMessage,
+        alternatives: alternatives.map(alt => ({
+          startTime: alt.startTime.toISOString(),
+          endTime: alt.endTime.toISOString(),
+          reason: alt.reason,
+          score: alt.score,
+        })),
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+        userId: userId || 'unknown',
+        resolved: false,
       });
 
     logger.info('✅ Posted conflict warning to conversation', {

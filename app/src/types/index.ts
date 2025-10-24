@@ -29,6 +29,7 @@ export interface RSVPMeta {
 
 export interface ConflictMeta {
   conflictId: string;
+  eventId?: string; // Event ID for reschedule actions
   message: string;
   suggestedAlternatives?: Array<{
     startTime: Timestamp;

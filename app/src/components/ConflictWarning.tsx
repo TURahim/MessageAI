@@ -1,7 +1,9 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert } from 'react-native';
 import dayjs from 'dayjs';
 import { ConflictMeta } from '@/types/index';
+import { doc, updateDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
 interface ConflictWarningProps {
   conflict: ConflictMeta;
@@ -9,6 +11,24 @@ interface ConflictWarningProps {
 }
 
 export default function ConflictWarning({ conflict, onSelectAlternative }: ConflictWarningProps) {
+  const handleKeepCurrentTime = async () => {
+    if (!conflict.conflictId) return;
+    
+    try {
+      // Update event to mark user accepted conflict
+      await updateDoc(doc(db, 'events', conflict.conflictId), {
+        userAcceptedConflict: true,
+        hasConflict: false, // Remove conflict flag
+        updatedAt: new Date(),
+      });
+      
+      Alert.alert('Confirmed', 'Event kept at originally requested time');
+    } catch (error: any) {
+      console.error('Error keeping time:', error);
+      Alert.alert('Error', 'Failed to confirm time');
+    }
+  };
+
   return (
     <View style={styles.container}>
       {/* Warning icon and message */}
@@ -49,6 +69,15 @@ export default function ConflictWarning({ conflict, onSelectAlternative }: Confl
               </TouchableOpacity>
             );
           })}
+          
+          {/* Keep Current Time Button */}
+          <TouchableOpacity
+            style={styles.keepTimeButton}
+            onPress={handleKeepCurrentTime}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.keepTimeText}>Keep current time anyway</Text>
+          </TouchableOpacity>
         </View>
       )}
     </View>
@@ -122,6 +151,20 @@ const styles = StyleSheet.create({
     color: '#007AFF',
     fontWeight: '600',
     marginLeft: 8,
+  },
+  keepTimeButton: {
+    backgroundColor: '#F5F5F5',
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 8,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#DDD',
+  },
+  keepTimeText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#666',
   },
 });
 

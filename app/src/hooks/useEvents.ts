@@ -49,6 +49,8 @@ export function useEvents(userId: string | null, selectedDate?: Date) {
           participants: doc.data().participants,
           participantNames: doc.data().participantNames,
           status: doc.data().status,
+          hasConflict: doc.data().hasConflict || false,
+          conversationId: doc.data().conversationId,
           color: doc.data().status === 'confirmed' ? '#4CAF50' : doc.data().status === 'declined' ? '#F44336' : '#FF9800',
         }));
 

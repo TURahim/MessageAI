@@ -334,8 +334,9 @@ async function buildConflictMessage(
 /**
  * Format time for display in user's timezone
  * 2. Timezone-aware formatting
+ * Currently unused - replaced by messageTemplates.formatRescheduleConfirmation
  */
-async function formatTime(date: Date, userId?: string): Promise<string> {
+/* async function formatTime(date: Date, userId?: string): Promise<string> {
   if (!userId) {
     return date.toLocaleString('en-US', {
       weekday: 'short',
@@ -355,7 +356,7 @@ async function formatTime(date: Date, userId?: string): Promise<string> {
     hour12: true,
     timeZone: userTimezone,
   });
-}
+} */
 
 /**
  * Handle user selecting an alternative time slot
@@ -382,6 +383,34 @@ export async function handleAlternativeSelection(
   });
 
   try {
+    // Idempotency: Check if this reschedule was already processed
+    const rescheduleKey = `${conflictId}_${alternativeIndex}`;
+    const existing = await admin.firestore()
+      .collection('reschedule_operations')
+      .doc(rescheduleKey)
+      .get();
+
+    if (existing.exists) {
+      logger.info('✅ Reschedule already processed (idempotent)', {
+        correlationId,
+        conflictId,
+        alternativeIndex,
+      });
+      return true;
+    }
+
+    // Mark as processing
+    await admin.firestore()
+      .collection('reschedule_operations')
+      .doc(rescheduleKey)
+      .set({
+        processed: true,
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+        conflictId,
+        alternativeIndex,
+        userId: userId || 'unknown',
+      });
+
     // Find the conflict message to get alternatives
     const messagesSnapshot = await admin.firestore()
       .collection('conversations')
@@ -420,13 +449,14 @@ export async function handleAlternativeSelection(
       .get();
 
     if (eventDoc.exists) {
-      // Update existing event to new time
+      // Update existing event to new time and clear conflict flag
       await admin.firestore()
         .collection('events')
         .doc(conflictId)
         .update({
           startTime: admin.firestore.Timestamp.fromDate(newStartTime),
           endTime: admin.firestore.Timestamp.fromDate(newEndTime),
+          hasConflict: false, // Clear conflict flag
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         });
 
@@ -436,9 +466,18 @@ export async function handleAlternativeSelection(
         newStartTime: newStartTime.toISOString(),
       });
 
-      // Get user timezone for confirmation message
-      const confirmUserId = userId || eventDoc.data()?.createdBy;
-      const timeStr = await formatTime(newStartTime, confirmUserId);
+      // Get event details for confirmation
+      const eventData = eventDoc.data();
+      const timezone = 'America/New_York'; // TODO: Get from user settings
+      const title = eventData?.title || 'Session';
+
+      // Use template for confirmation
+      const { formatRescheduleConfirmation } = await import('./messageTemplates');
+      const confirmationText = formatRescheduleConfirmation(
+        title,
+        newStartTime.toISOString(),
+        timezone
+      );
 
       // Post confirmation message
       await admin.firestore()
@@ -450,7 +489,7 @@ export async function handleAlternativeSelection(
           senderName: 'JellyDM Assistant',
           type: 'text',
           messageType: 'confirmation',
-          text: `✅ Session rescheduled to ${timeStr}`,
+          text: confirmationText,
           clientTimestamp: admin.firestore.FieldValue.serverTimestamp(),
           serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
           status: 'sent',
