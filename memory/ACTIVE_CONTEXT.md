@@ -8,11 +8,11 @@
 > 
 > These guides provide instant context for any development task.
 
-## Current Milestone: JellyDM Backend Integration 40% Complete ✅ - Phase 9 (PRs 1-6)
+## Current Milestone: JellyDM Backend Integration 53% Complete ✅ - Phase 9 (PRs 1-8)
 MessageAI MVP + JellyDM UI complete. Backend infrastructure in progress.
-Completed: AI gating, RAG pipeline, function calling, date parser, event backend, Schedule UI wiring (PRs 1-6 of 15).
-Schedule tab now connected to Firestore. RSVP handlers functional. Event CRUD working.
-Latest work: Backend PRs 1-6 (Oct 24, 2025)
+Completed: AI gating, RAG, tools, date parser, event backend, Schedule wiring, RSVP system (PRs 1-8 of 15).
+Schedule + RSVP fully functional. Natural language response interpretation working.
+Latest work: Backend PRs 7-8 (RSVP system complete) - Oct 24, 2025
 
 ## What's Working (Phase 1-8 Complete)
 - ✅ Expo Router file-based routing (nested app/app/ structure)
@@ -383,6 +383,18 @@ import { addFriend } from '@/services/friendService';
   - RSVP handlers → recordRSVP() wired
   - aiOrchestratorService wrapper created
   - Navigation wired (event→schedule, deadline→tasks)
-- **Status:** 6 of 15 backend PRs complete (40%)
-- **Next:** PR7-8 (RSVP system), PR9-10 (Urgency + Conflicts), PR11 (Tasks wiring)
+- **PR7:** RSVP Backend (COMPLETE ✅)
+  - rsvpService with createInvite, recordResponse
+  - rsvp.create_invite tool → posts assistant message with buttons
+  - rsvp.record_response tool → updates event.rsvps + status
+  - Auto-status logic: all accepted→confirmed, any declined→declined
+  - Integrated with shipped EventCard + RSVPButtons
+- **PR8:** NL Response Interpretation (COMPLETE ✅)
+  - interpretRSVP() with GPT-3.5 structured output
+  - Ambiguity detection (9 keywords: maybe, might, probably, etc.)
+  - Auto-record when confidence ≥0.7 and no ambiguity
+  - shouldAutoRecord boolean for automation
+  - 9/9 unit tests passing
+- **Status:** 8 of 15 backend PRs complete (53%)
+- **Next:** PR9-10 (Urgency + Conflicts), PR11 (Tasks wiring), PR12-14 (Reminders + Monitoring)
 

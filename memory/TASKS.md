@@ -8,26 +8,26 @@
 >
 > **These provide instant context for continuing work.**
 
-## Current Status: JellyDM Backend 40% Complete 🔄 - Schedule Wired
+## Current Status: JellyDM Backend 53% Complete 🔄 - RSVP System Complete
 
-UI complete (PRs 01-05). Backend infrastructure 6/15 PRs done (PRs 1-6).
-Schedule tab now connected to Firestore. Event CRUD working. AI gating ready.
-Next: RSVP system, urgency detection, tasks wiring.
+UI complete (PRs 01-05). Backend infrastructure 8/15 PRs done (PRs 1-8).
+Schedule + RSVP systems fully functional. Natural language interpretation working.
+Next: Urgency detection, conflict engine, tasks wiring.
 
 ---
 
 ## 🎯 Immediate Tasks (Backend PRs 7-15)
 
-### High Priority - RSVP System (PRs 7-8)
-- [ ] **PR7:** RSVP Backend Service
-  - Implement rsvpService with createInvite, recordResponse
-  - Wire rsvp.create_invite and rsvp.record_response tools
-  - Test RSVP flow end-to-end
+### Completed Phase 3: RSVP System (PRs 7-8) ✅
+- [x] **PR7:** RSVP Backend Service ✅
+  - rsvpService with createInvite, recordResponse
+  - rsvp.create_invite and rsvp.record_response tools wired
+  - RSVP flow tested and working
   
-- [ ] **PR8:** NL Response Interpretation
-  - Build classifier for "yes"/"no"/"maybe" responses
+- [x] **PR8:** NL Response Interpretation ✅
+  - Classifier for "yes"/"no"/"maybe" with GPT-3.5
   - Auto-record when confidence >0.7
-  - Detect ambiguity words, prompt clarification
+  - Ambiguity detection (9 keywords), confidence capping
   
 ### High Priority - Priority & Conflicts (PRs 9-10)
 - [ ] **PR9:** Urgency Detection

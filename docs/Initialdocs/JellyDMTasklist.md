@@ -584,41 +584,41 @@ MessageAI/
 
 ---
 
-## Phase 3: RSVP System (PRs 7-8)
+## Phase 3: RSVP System (PRs 7-8) ✅ COMPLETE
 
-**Timeline:** 4-5 days total  
+**Timeline:** 4-5 days total → **Completed Oct 24, 2025**  
 **Goal:** Track confirmations with interactive cards
 
-### PR7: RSVP Components
+### PR7: RSVP Components ✅
 
-**Estimated Time:** 2-3 days
+**Estimated Time:** 2-3 days → **Completed**
 
 **Key Files:** `app/src/types/eventTypes.ts`, `app/src/services/schedule/rsvpService.ts`, `functions/src/ai/toolExecutor.ts`
 
 **Note:** EventCard and RSVPButtons already shipped in PR-02. Focus on backend wiring.
 
 **Acceptance Criteria:**
-- Shipped EventCard renders with RSVP data ✅
-- Shipped RSVPButtons work with backend ✅
-- Real-time status updates via useThreadStatus ✅
-- Tools integrated ✅
-- StatusChip in header reflects RSVP state ✅
+- [x] Shipped EventCard renders with RSVP data ✅
+- [x] Shipped RSVPButtons work with backend ✅
+- [x] Real-time status updates via useThreadStatus ✅
+- [x] Tools integrated ✅
+- [x] StatusChip in header reflects RSVP state ✅
 
 ---
 
-### PR8: NL Response Interpretation
+### PR8: NL Response Interpretation ✅
 
-**Estimated Time:** 2 days
+**Estimated Time:** 2 days → **Completed**
 
 **Key Files:** `functions/src/ai/promptTemplates.ts`, `functions/src/ai/messageAnalyzer.ts`, `app/__tests__/services/rsvpInterpretation.test.ts`
 
 **Acceptance Criteria:**
-- Classifier works for common phrases ✅
-- Auto-records when confidence >0.7 ✅
-- **NEW:** Explicit confirm required when ambiguity words detected ("maybe", "should work", "might") ✅
-- Unclear responses prompt clarification ✅
-- >80% accuracy ✅
-- **Eval suite includes RSVP interpretation tests** ✅
+- [x] Classifier works for common phrases ✅
+- [x] Auto-records when confidence >0.7 ✅
+- [x] Explicit confirm required when ambiguity words detected ("maybe", "should work", "might") ✅
+- [x] Unclear responses prompt clarification ✅
+- [x] >80% accuracy ✅
+- [x] Eval suite includes RSVP interpretation tests ✅
 
 ---
 

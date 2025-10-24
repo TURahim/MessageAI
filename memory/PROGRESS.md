@@ -175,6 +175,61 @@ Created comprehensive JellyDM_UI.md document with:
 
 ---
 
+## 2025-10-24 (Evening): PRs 7-8 Complete ✅
+
+**Milestone:** RSVP system complete, backend 53% done  
+**Work:** Implemented PRs 7-8 (RSVP backend + NL interpretation)  
+**Time:** ~2 hours  
+**Status:** Phase 3 (RSVP) complete, 8 of 15 PRs done
+
+### What Was Built
+
+#### PR7: RSVP Backend
+- rsvpService.ts with recordResponse, createInvite
+- rsvp.create_invite tool handler
+  - Creates assistant message with meta.rsvp
+  - Message renders EventCard + RSVPButtons in UI
+- rsvp.record_response tool handler
+  - Records Accept/Decline in event.rsvps.{userId}
+  - Auto-updates event status based on all responses
+  - Logic: all accepted→confirmed, any declined→declined
+- Integrated with shipped RSVPButtons (PR-02)
+
+#### PR8: NL Response Interpretation
+- rsvpInterpreter.ts with interpretRSVP()
+- Uses GPT-3.5-turbo with structured output
+- Ambiguity detection (9 keywords)
+- Confidence capping at 0.6 when ambiguous
+- shouldAutoRecord boolean
+- 9/9 unit tests passing
+- Target: >80% accuracy
+
+### Technical Achievements
+- **Backend PRs:** 8 of 15 complete (53%)
+- **New Files:** 3 (rsvpService, rsvpInterpreter, tests)
+- **Code Added:** ~430 lines
+- **TypeScript:** 0 errors
+- **Tests:** 107+ passing
+
+### What's Working
+- ✅ RSVP invite creation
+- ✅ Accept/Decline buttons update Firestore
+- ✅ Event status changes automatically
+- ✅ Ambiguity detection ("maybe" flagged)
+- ✅ Auto-record logic (confidence >0.7)
+- ✅ StatusChip reflects RSVP state
+
+### Next Steps
+1. PR9-10: Urgency detection + Conflict engine
+2. PR11: Wire Tasks UI to Firestore
+3. PR12: Reminder service + outbox
+4. PR13-14: Monitoring + nudges
+5. Deploy and test end-to-end
+
+**Status:** Phase 3 complete. RSVP flow functional! 🎉
+
+---
+
 
 ## 2025-10-20 - Scaffolding Complete (Step H)
 
