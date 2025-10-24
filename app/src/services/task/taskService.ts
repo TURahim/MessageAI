@@ -43,17 +43,26 @@ export interface CreateDeadlineInput {
  * Create a new deadline
  */
 export async function addDeadline(input: CreateDeadlineInput): Promise<string> {
-  const deadlineRef = await addDoc(collection(db, 'deadlines'), {
+  // Build data object, omitting undefined fields
+  const deadlineData: any = {
     title: input.title,
     dueDate: Timestamp.fromDate(input.dueDate),
     assignee: input.assignee,
-    assigneeName: input.assigneeName,
-    conversationId: input.conversationId,
     completed: false,
     createdBy: input.createdBy,
     createdAt: Timestamp.now(),
     updatedAt: Timestamp.now(),
-  });
+  };
+
+  // Only include optional fields if defined
+  if (input.assigneeName !== undefined) {
+    deadlineData.assigneeName = input.assigneeName;
+  }
+  if (input.conversationId !== undefined) {
+    deadlineData.conversationId = input.conversationId;
+  }
+
+  const deadlineRef = await addDoc(collection(db, 'deadlines'), deadlineData);
 
   console.log('✅ Deadline created:', deadlineRef.id);
   return deadlineRef.id;
