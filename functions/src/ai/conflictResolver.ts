@@ -386,7 +386,7 @@ async function getUserScheduleContext(
       const data = doc.data();
       const start = data.startTime.toDate();
       const end = data.endTime.toDate();
-      return `- ${data.title || 'Session'}: ${formatTime(start)} - ${formatTime(end)}`;
+      return `- ${data.title || 'Session'}: ${formatTime(start, timezone)} - ${formatTime(end, timezone)}`;
     });
 
     return events.join('\n');
@@ -396,73 +396,8 @@ async function getUserScheduleContext(
   }
 }
 
-/**
- * Format time for display in prompt
- */
-function formatTime(date: Date): string {
-  return date.toLocaleString('en-US', {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-  });
-}
 
-/**
- * Validate that alternatives don't conflict with existing schedule
- */
-async function validateAlternatives(
-  alternatives: AlternativeTimeSlot[],
-  context: ConflictContext
-): Promise<AlternativeTimeSlot[]> {
-  const validAlternatives: AlternativeTimeSlot[] = [];
 
-  for (const alt of alternatives) {
-    // Check if alternative conflicts with any existing event
-    let hasConflict = false;
-
-    for (const event of context.conflictingEvents) {
-      if (timeRangesOverlap(alt.startTime, alt.endTime, event.startTime, event.endTime)) {
-        hasConflict = true;
-        break;
-      }
-    }
-
-    // Also check against proposed time (should be different)
-    if (timeRangesOverlap(
-      alt.startTime,
-      alt.endTime,
-      context.proposedStartTime,
-      context.proposedEndTime
-    )) {
-      hasConflict = true;
-    }
-
-    if (!hasConflict) {
-      validAlternatives.push(alt);
-    } else {
-      logger.warn('⚠️ Alternative conflicts, skipping', {
-        startTime: alt.startTime.toISOString(),
-      });
-    }
-  }
-
-  return validAlternatives;
-}
-
-/**
- * Helper: Check if two time ranges overlap
- */
-function timeRangesOverlap(
-  start1: Date,
-  end1: Date,
-  start2: Date,
-  end2: Date
-): boolean {
-  return start1 < end2 && start2 < end1;
-}
 
 /**
  * Fallback: Generate simple rule-based alternatives

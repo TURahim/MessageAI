@@ -1,146 +1,174 @@
-Autonomous Monitor Reliability & Idempotency Upgrade
-
 Goal
-Refactor the Autonomous Monitor module to improve correctness, reliability, and idempotency now that user timezones are supported.
-Focus on these areas: event confirmation logic, idempotent nudges, timezone usage, and query scalability.
+Refactor generateAlternatives() in conflictResolver.ts so that it produces AI-generated alternative time slots that respect:
+
+The user’s timezone
+
+Their working hours
+
+Existing event conflicts
 
 🧩 Scope
 
-Modify only the file(s) related to the Autonomous Monitor (autonomousMonitor.ts and any helpers it imports).
-Do not alter unrelated services (e.g., AI analyzers or RSVP interpreters).
-Preserve the current Firestore schema and log style (emoji-prefixed logs).
+Modify only the generateAlternatives() function and any local helper functions it depends on.
+You can import utilities from:
 
-⚙️ Changes Required
-1️⃣ Fix “confirmed” event logic
+getUserTimezone(userId) → returns string (e.g., "America/Toronto")
 
-Currently an event is considered confirmed if all participants have any response — even declines.
-Update logic to treat an event as confirmed only if all required participants have explicitly accepted.
+getUserWorkingHours(userId) → returns { mon: [{start,end}], ... }
 
-Organizer (createdBy) should be excluded from required participants.
+convertWorkingHoursToUTC(workingHours, timezone) → new helper if needed.
 
-Skip or warn on events with no participants.
+Do not alter Firestore schema or unrelated modules.
 
-Example:
+⚙️ Tasks
+1️⃣ Update the Function Signature
 
-const required = participants.filter(uid => uid !== event.createdBy);
-const accepted = required.filter(uid => rsvps[uid]?.response === 'accept').length;
-const allAccepted = required.length > 0 && accepted === required.length;
-if (!allAccepted) { /* unconfirmed */ }
+Add explicit timezone and working hours awareness:
 
-2️⃣ Use user timezones for formatting
-
-Use the getUserTimezone(event.createdBy) helper before formatting dates.
-
-Replace toLocaleString() with:
-
-const tz = await getUserTimezone(event.createdBy);
-const fmt = new Intl.DateTimeFormat('en-CA', {
-  weekday: 'short', month: 'short', day: 'numeric',
-  hour: 'numeric', minute: '2-digit', hour12: true, timeZone: tz,
-});
-const startLabel = fmt.format(event.startTime);
-
-
-Include (tz) in the nudge message to make it explicit.
-
-3️⃣ Add idempotency for nudges
-
-Prevent duplicate nudges by writing an idempotent record before sending the message.
-
-Replace wasNudgeSent() + logNudge() with a single atomic write:
-
-const id = `${event.eventId}__${nudgeType}`;
-await admin.firestore().collection('nudge_logs').doc(id).create({
-  eventId: event.eventId,
-  conversationId: event.conversationId,
-  nudgeType,
-  sentAt: admin.firestore.FieldValue.serverTimestamp(),
-});
-
-
-If create() throws “already exists,” skip sending the message and log:
-
-logger.info('⏭️ Nudge already logged; skipping send', { eventId });
-
-4️⃣ Add query limit + index note
-
-Add a .limit(500) safeguard to your Firestore event query.
-
-Add a code comment noting the required composite index:
-
-// Firestore index: events(status ASC, startTime ASC)
-
-5️⃣ Improve hours calculation + edge handling
-
-Use Math.floor(hoursTillStart) instead of rounding.
-
-Handle events with zero participants:
-
-if (required.length === 0) {
-  logger.warn('⚠️ Event has no participants; skipping', { eventId });
-  continue;
+export async function generateAlternatives(context: ConflictContext): Promise<AlternativeTimeSlot[]> {
+  const { userId, proposedStartTime, proposedEndTime, conflictingEvents } = context;
+  const tz = await getUserTimezone(userId);
+  const workingHours = await getUserWorkingHours(userId);
+  ...
 }
 
-6️⃣ Add message metadata consistency
+2️⃣ Create a Utility to Convert Availability Windows
 
-When creating the nudge message, set:
+Add a local helper:
 
-messageType: 'system_nudge',
-createdAt: admin.firestore.FieldValue.serverTimestamp(),
+function convertWorkingHoursToUTC(workingHours: WorkingHours, tz: string, daysAhead = 7): Array<{ start: Date; end: Date }> {
+  const now = new Date();
+  const windows: Array<{ start: Date; end: Date }> = [];
+  for (let d = 0; d < daysAhead; d++) {
+    const date = new Date(now.getTime() + d * 86400000);
+    const dayKey = date.toLocaleDateString('en-US', { weekday: 'short' }).toLowerCase().slice(0,3);
+    if (!workingHours[dayKey]) continue;
+
+    for (const block of workingHours[dayKey]) {
+      const [hStart, mStart] = block.start.split(':').map(Number);
+      const [hEnd, mEnd] = block.end.split(':').map(Number);
+      const localStart = new Date(date);
+      localStart.setHours(hStart, mStart, 0, 0);
+      const localEnd = new Date(date);
+      localEnd.setHours(hEnd, mEnd, 0, 0);
+
+      const startUTC = new Date(localStart.toLocaleString('en-US', { timeZone: 'UTC' }));
+      const endUTC = new Date(localEnd.toLocaleString('en-US', { timeZone: 'UTC' }));
+      windows.push({ start: startUTC, end: endUTC });
+    }
+  }
+  return windows;
+}
 
 
-This helps the client render system messages differently and sort correctly.
+This builds a rolling 7-day map of allowed UTC ranges.
 
-7️⃣ Add better observability
+3️⃣ Filter Conflicting Events
 
-Add correlationId (eventId substring) to every log line in this module.
+Flatten existing conflicting events into blocked UTC intervals:
 
-Log timing stats:
+const blocked = conflictingEvents.map(e => ({
+  start: e.startTime,
+  end: e.endTime,
+}));
 
-Detection duration (event query → filter complete)
 
-Total processing duration (start → all nudges sent)
+and use a helper isTimeFree(candidateStart, candidateEnd, blocked).
+
+4️⃣ AI Prompt Template Update
+
+Build a context-aware prompt for GPT-4 or Claude that includes timezone and working hours:
+
+const prompt = `
+You are a scheduling assistant for a tutoring platform.
+
+User timezone: ${tz}
+Working hours:
+${Object.entries(workingHours).map(([day, blocks]) => 
+  `${day.toUpperCase()}: ${blocks.map(b => `${b.start}–${b.end}`).join(', ')}`
+).join('\n')}
+
+Proposed session:
+${proposedStartTime.toLocaleString('en-US', { timeZone: tz })} → ${proposedEndTime.toLocaleString('en-US', { timeZone: tz })}
+
+Existing conflicts:
+${conflictingEvents.map(e => `• ${e.title} (${e.startTime.toLocaleString('en-US',{timeZone:tz})}–${e.endTime.toLocaleString('en-US',{timeZone:tz})})`).join('\n')}
+
+Generate up to 3 alternative time slots within the next 7 days that:
+- Fit entirely within working hours
+- Avoid conflicts
+- Preserve the same session duration (${context.sessionDuration} minutes)
+- Are spaced at least 30 minutes apart
+
+Return JSON:
+[
+  { "startTime": "ISO8601 UTC", "endTime": "ISO8601 UTC", "reason": "string" }
+]
+`;
+
+
+Then call the LLM:
+
+const { generateObject } = await import('ai');
+const { openai } = await import('@ai-sdk/openai');
+
+const result = await generateObject({
+  model: openai('gpt-4-turbo'),
+  prompt,
+  schema: z.array(
+    z.object({
+      startTime: z.string().describe('Alternative start time in ISO UTC'),
+      endTime: z.string().describe('Alternative end time in ISO UTC'),
+      reason: z.string(),
+    })
+  ),
+  temperature: 0.4,
+  maxTokens: 250,
+});
+
+5️⃣ Post-Processing
+
+Parse and validate each returned slot.
+
+Ensure each proposed time fits inside a UTC working window.
+
+Deduplicate near-identical suggestions.
+
+Return final list as AlternativeTimeSlot[].
+
+return validated.filter(slot =>
+  availableWindows.some(win => slot.startTime >= win.start && slot.endTime <= win.end)
+);
+
+6️⃣ Logging and Metrics
+
+Log:
+
+logger.info('🧠 Alternatives generated', {
+  userId: userId.substring(0,8),
+  timezone: tz,
+  count: alternatives.length,
+  duration: `${context.sessionDuration}m`,
+});
 
 ✅ Acceptance Criteria
 
- “Confirmed” logic checks accepted responses only.
+ AI prompt includes timezone + working hours context.
 
- Time formatting uses each tutor’s timezone via getUserTimezone().
+ Suggested times fall within user’s working hours (local time).
 
- Duplicate nudges prevented via idempotent log documents.
+ Suggested times avoid conflicts and preserve duration.
 
- Query safely limited and indexed.
+ At least one alternative returned in common cases.
 
- hoursTillStart always floored, not rounded.
+ All times are stored and transmitted in UTC for Firestore consistency.
 
- Events with no participants are skipped gracefully.
+ No breaking changes to existing ConflictContext consumers.
 
- All logs include a correlationId and step timings.
+💡 Optional Stretch
 
- No Firestore schema changes required.
+Add preference weighting (morning vs afternoon).
 
- TypeScript compiles cleanly; all logger calls remain consistent.
+Cache last 7-day availability windows for faster lookups.
 
-🧠 Optional Stretch (if Cursor has bandwidth)
-
-Extract new utility functions:
-
-isEventUnconfirmed(event) → encapsulates RSVP logic.
-
-sendTemplateNudge(event, templateId) → generic for future templates.
-
-Add unit tests for:
-
-Events with mixed accept/decline.
-
-Duplicate nudge run.
-
-Timezone formatting differences.
-
-🧩 Context Summary for Cursor
-
-Firestore collections: /events, /conversations/{id}/messages, /nudge_logs.
-
-User timezone is now stored under /users/{uid}.timezone.
-
-This function runs as a scheduled Cloud Function every few hours.
+Add confidence score for each suggested slot.
