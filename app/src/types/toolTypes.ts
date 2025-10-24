@@ -104,7 +104,7 @@ export interface RSVPCreateInviteOutput {
 export interface RSVPRecordResponseInput {
   eventId: string;
   userId: string;
-  response: 'accepted' | 'declined';
+  response: 'accept' | 'decline'; // Normalized to match interpreter output
   conversationId: string;
 }
 

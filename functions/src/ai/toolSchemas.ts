@@ -3,10 +3,34 @@
  * 
  * Defines all 8 tools with Zod validation
  * CRITICAL: timezone is REQUIRED in time/schedule tools
+ * Strict validation: ISO 8601 UTC, IANA timezones, non-empty constraints
  */
 
 import { tool } from 'ai';
 import { z } from 'zod';
+
+// 1. Custom validators for stricter validation
+const ISO_UTC = z.string().datetime().refine(
+  (val) => val.endsWith('Z'),
+  { message: 'Must be ISO 8601 UTC (ending with Z)' }
+);
+
+const IANATimezone = z.string().refine(
+  (val) => {
+    try {
+      Intl.DateTimeFormat(undefined, { timeZone: val });
+      return true;
+    } catch {
+      return false;
+    }
+  },
+  { message: 'Must be a valid IANA timezone (e.g., America/Toronto)' }
+);
+
+const NonEmptyString = z.string().min(1);
+const UserId = z.string().min(8); // Firebase UIDs are typically 28 chars
+const ConversationId = z.string().min(8);
+const EventTitle = z.string().min(1).max(200);
 
 /**
  * 1. time.parse - Parse natural language date/time
@@ -15,10 +39,10 @@ import { z } from 'zod';
  */
 export const timeParseSchema = tool({
   description: 'Parse natural language date/time into structured format. MUST include timezone.',
-  parameters: z.object({
-    text: z.string().describe('Natural language date/time (e.g., "tomorrow at 3pm")'),
-    timezone: z.string().describe('REQUIRED - IANA timezone (e.g., "America/New_York")'),
-    referenceDate: z.string().optional().describe('ISO8601 reference date, defaults to now'),
+  parameters: z.strictObject({
+    text: NonEmptyString.describe('Natural language date/time (e.g., "tomorrow at 3pm")'),
+    timezone: IANATimezone.describe('REQUIRED - IANA timezone (e.g., "America/Toronto")'),
+    referenceDate: ISO_UTC.optional().describe('ISO8601 reference date in UTC, defaults to now'),
   }),
   // execute will be provided by toolExecutor
 });
@@ -30,14 +54,14 @@ export const timeParseSchema = tool({
  */
 export const scheduleCreateEventSchema = tool({
   description: 'Create a new calendar event for a tutoring session',
-  parameters: z.object({
-    title: z.string().describe('Event title (e.g., "Math Tutoring")'),
-    startTime: z.string().describe('ISO8601 start time in UTC'),
-    endTime: z.string().describe('ISO8601 end time in UTC'),
-    timezone: z.string().describe('REQUIRED - IANA timezone for display'),
-    participants: z.array(z.string()).describe('Array of user IDs'),
-    conversationId: z.string().describe('Associated conversation ID'),
-    createdBy: z.string().describe('Creator user ID'),
+  parameters: z.strictObject({
+    title: EventTitle.describe('Event title (e.g., "Math Tutoring")'),
+    startTime: ISO_UTC.describe('ISO8601 start time in UTC (must end with Z)'),
+    endTime: ISO_UTC.describe('ISO8601 end time in UTC (must end with Z)'),
+    timezone: IANATimezone.describe('REQUIRED - IANA timezone for display'),
+    participants: z.array(UserId).min(1).describe('Array of user IDs (at least 1)'),
+    conversationId: ConversationId.describe('Associated conversation ID'),
+    createdBy: UserId.describe('Creator user ID'),
   }),
 });
 
@@ -48,11 +72,11 @@ export const scheduleCreateEventSchema = tool({
  */
 export const scheduleCheckConflictsSchema = tool({
   description: 'Check if a time slot conflicts with existing events',
-  parameters: z.object({
-    userId: z.string().describe('User ID to check conflicts for'),
-    startTime: z.string().describe('ISO8601 start time in UTC'),
-    endTime: z.string().describe('ISO8601 end time in UTC'),
-    timezone: z.string().describe('REQUIRED - IANA timezone for DST handling'),
+  parameters: z.strictObject({
+    userId: UserId.describe('User ID to check conflicts for'),
+    startTime: ISO_UTC.describe('ISO8601 start time in UTC (must end with Z)'),
+    endTime: ISO_UTC.describe('ISO8601 end time in UTC (must end with Z)'),
+    timezone: IANATimezone.describe('REQUIRED - IANA timezone for DST handling'),
   }),
 });
 
@@ -61,23 +85,25 @@ export const scheduleCheckConflictsSchema = tool({
  */
 export const rsvpCreateInviteSchema = tool({
   description: 'Create an event invitation message in the conversation',
-  parameters: z.object({
-    eventId: z.string().describe('Event ID from schedule.create_event'),
-    conversationId: z.string().describe('Conversation to post invite in'),
-    message: z.string().describe('AI-generated invitation text'),
+  parameters: z.strictObject({
+    eventId: NonEmptyString.describe('Event ID from schedule.create_event'),
+    conversationId: ConversationId.describe('Conversation to post invite in'),
+    message: NonEmptyString.max(1000).describe('AI-generated invitation text'),
   }),
 });
 
 /**
  * 5. rsvp.record_response - Record RSVP response
+ * 
+ * 4. Normalized to 'accept' | 'decline' (matches interpreter output)
  */
 export const rsvpRecordResponseSchema = tool({
   description: 'Record a user\'s response to an event invitation',
-  parameters: z.object({
-    eventId: z.string().describe('Event ID'),
-    userId: z.string().describe('User ID responding'),
-    response: z.enum(['accepted', 'declined']).describe('Response type'),
-    conversationId: z.string().describe('Conversation ID'),
+  parameters: z.strictObject({
+    eventId: NonEmptyString.describe('Event ID'),
+    userId: UserId.describe('User ID responding'),
+    response: z.enum(['accept', 'decline']).describe('Response type (accept or decline)'),
+    conversationId: ConversationId.describe('Conversation ID'),
   }),
 });
 
@@ -86,12 +112,12 @@ export const rsvpRecordResponseSchema = tool({
  */
 export const taskCreateSchema = tool({
   description: 'Create a homework assignment or deadline',
-  parameters: z.object({
-    title: z.string().describe('Task title (e.g., "Math homework Chapter 5")'),
-    dueDate: z.string().describe('ISO8601 due date in UTC'),
-    assignee: z.string().describe('User ID assigned to'),
-    conversationId: z.string().describe('Associated conversation ID'),
-    createdBy: z.string().describe('Creator user ID (usually assistant)'),
+  parameters: z.strictObject({
+    title: NonEmptyString.max(200).describe('Task title (e.g., "Math homework Chapter 5")'),
+    dueDate: ISO_UTC.describe('ISO8601 due date in UTC (must end with Z)'),
+    assignee: UserId.describe('User ID assigned to'),
+    conversationId: ConversationId.describe('Associated conversation ID'),
+    createdBy: UserId.describe('Creator user ID (usually assistant)'),
   }),
 });
 
@@ -100,24 +126,26 @@ export const taskCreateSchema = tool({
  */
 export const remindersScheduleSchema = tool({
   description: 'Schedule a reminder notification for an event or task',
-  parameters: z.object({
+  parameters: z.strictObject({
     entityType: z.enum(['event', 'task']).describe('Type of entity'),
-    entityId: z.string().describe('Event or task ID'),
-    targetUserId: z.string().describe('User to remind'),
+    entityId: NonEmptyString.describe('Event or task ID'),
+    targetUserId: UserId.describe('User to remind'),
     reminderType: z.enum(['24h', '2h', 'due']).describe('Reminder timing'),
-    scheduledFor: z.string().describe('ISO8601 time to send reminder in UTC'),
+    scheduledFor: ISO_UTC.describe('ISO8601 time to send reminder in UTC (must end with Z)'),
   }),
 });
 
 /**
  * 8. messages.post_system - Post assistant message
+ * 
+ * 6. Strengthened text validation
  */
 export const messagesPostSystemSchema = tool({
   description: 'Post a system/assistant message in the conversation',
-  parameters: z.object({
-    conversationId: z.string().describe('Conversation ID'),
-    text: z.string().describe('Message text'),
-    meta: z.record(z.any()).optional().describe('Message metadata (EventMeta, DeadlineMeta, etc.)'),
+  parameters: z.strictObject({
+    conversationId: ConversationId.describe('Conversation ID'),
+    text: z.string().min(1).max(4000).describe('Message text (1-4000 chars)'),
+    meta: z.record(z.unknown()).optional().describe('Message metadata (EventMeta, DeadlineMeta, etc.)'),
   }),
 });
 
@@ -148,14 +176,18 @@ export const TIMEZONE_REQUIRED_TOOLS: string[] = [
 /**
  * Get relevant tools based on task type
  * Used by GPT-4 orchestration to limit tool selection
+ * 
+ * 7. Minimal tool sets to reduce spurious calls
  */
 export function getToolsForTaskType(taskType: string) {
   switch (taskType) {
     case 'scheduling':
+      // Include rsvp.create_invite for sending invitations
       return {
         'time.parse': timeParseSchema,
         'schedule.create_event': scheduleCreateEventSchema,
         'schedule.check_conflicts': scheduleCheckConflictsSchema,
+        'rsvp.create_invite': rsvpCreateInviteSchema,
         'messages.post_system': messagesPostSystemSchema,
       };
     case 'rsvp':
@@ -182,11 +214,16 @@ export function getToolsForTaskType(taskType: string) {
         'messages.post_system': messagesPostSystemSchema,
       };
     case 'urgent':
+      // Urgent can check conflicts for rescheduling
       return {
+        'schedule.check_conflicts': scheduleCheckConflictsSchema,
         'messages.post_system': messagesPostSystemSchema,
       };
     default:
-      return allToolSchemas; // Fallback to all tools
+      // 7. Avoid allToolSchemas fallback - only allow posting messages
+      return {
+        'messages.post_system': messagesPostSystemSchema,
+      };
   }
 }
 

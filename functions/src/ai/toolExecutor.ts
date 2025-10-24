@@ -464,10 +464,10 @@ async function handleRSVPRecordResponse(params: RSVPRecordResponseInput): Promis
     const eventData = eventDoc.data();
     const rsvps = eventData?.rsvps || {};
     
-    // Simple logic: if all participants responded with 'accepted', status is 'confirmed'
+    // Simple logic: if all participants responded with 'accept', status is 'confirmed'
     const participants = eventData?.participants || [];
-    const allAccepted = participants.every((pid: string) => rsvps[pid]?.response === 'accepted');
-    const anyDeclined = Object.values(rsvps).some((r: any) => r.response === 'declined');
+    const allAccepted = participants.every((pid: string) => rsvps[pid]?.response === 'accept');
+    const anyDeclined = Object.values(rsvps).some((r: any) => r.response === 'decline');
     
     let updatedStatus: 'pending' | 'confirmed' | 'declined' = 'pending';
     if (allAccepted && Object.keys(rsvps).length === participants.length) {
