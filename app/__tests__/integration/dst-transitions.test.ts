@@ -14,6 +14,13 @@
  * TODO: Re-enable after proper monorepo setup or move timezoneUtils to shared location
  */
 
+// Declare dummy functions for TypeScript (test is skipped)
+const validateTimezone = (tz: any): void => {};
+const parseDateTime = (text: string, tz: string, ref?: Date): any => {};
+const formatInTimezone = (date: Date, tz: string, format?: string): string => '';
+const isDSTTransition = (date: Date, tz: string): boolean => false;
+const timeRangesOverlap = (s1: Date, e1: Date, s2: Date, e2: Date, tz?: string): boolean => false;
+
 describe.skip('DST Transition Tests', () => {
   // Skipped - requires functions/src/utils/timezoneUtils which has separate dependencies
   describe('Timezone Validation', () => {
