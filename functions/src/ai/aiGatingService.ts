@@ -104,10 +104,20 @@ export async function gateMessage(
           temperature: 0.3, // Deterministic
         });
 
-        // Parse JSON response
-        const parsed = JSON.parse(result.text);
+        // Parse JSON response (handle markdown code blocks)
+        let responseText = result.text.trim();
+        
+        // Remove markdown code blocks if present
+        if (responseText.startsWith('```')) {
+          responseText = responseText
+            .replace(/```json\n?/g, '')
+            .replace(/```\n?/g, '')
+            .trim();
+        }
+        
+        const parsed = JSON.parse(responseText);
         const task: TaskType = parsed.task;
-        const confidence: number = parsed.confidence;
+        const confidence: number = parsed.confidence || 0;
 
         const processingTime = Date.now() - startTime;
 
