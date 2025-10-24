@@ -19,7 +19,7 @@ interface Props {
 export default function ConversationListItem({ conversation, currentUserId }: Props) {
   const [otherUser, setOtherUser] = useState<User | null>(null);
   const navigationInProgress = useRef(false);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     // Get other user's info for direct conversations

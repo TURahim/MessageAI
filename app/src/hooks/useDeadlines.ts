@@ -97,7 +97,7 @@ export function useDeadlines(userId: string | null) {
       await addDeadlineService({
         title: deadline.title,
         dueDate: deadline.dueDate,
-        assignee: deadline.assignee,
+        assignee: deadline.assignee || userId, // Default to current user if not specified
         assigneeName: deadline.assigneeName,
         conversationId: deadline.conversationId,
         createdBy: userId,

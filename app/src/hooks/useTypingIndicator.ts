@@ -8,8 +8,8 @@ import { setTyping, clearTyping } from '@/services/typingService';
  * - Set typing=false on unmount
  */
 export function useTypingIndicator(conversationId: string, userId: string | null) {
-  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const clearTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isTypingRef = useRef<boolean>(false);
 
   // Cleanup function

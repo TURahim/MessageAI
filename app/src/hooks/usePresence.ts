@@ -12,7 +12,7 @@ import { useAuth } from './useAuth';
  */
 export function usePresence(activeConversationId: string | null | undefined = null) {
   const { user } = useAuth();
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
 
   useEffect(() => {

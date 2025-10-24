@@ -41,7 +41,7 @@ export default function ChatRoomScreen() {
   const [optimisticMessages, setOptimisticMessages] = useState<Message[]>([]); // Local queue for offline messages
   const [showRetryBanner, setShowRetryBanner] = useState(false);
   const previousOnlineStatus = useRef<boolean>(true);
-  const retryBannerTimeout = useRef<NodeJS.Timeout | null>(null);
+  const retryBannerTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   const conversationId = id || "demo-conversation-1";
   const currentUserId = auth.currentUser?.uid || "anonymous";
