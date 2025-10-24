@@ -91,9 +91,26 @@ export function parseDateTime(
         endDate = new Date(startDate.getTime() + defaultDurationMinutes * 60 * 1000);
       }
 
-      // Convert to luxon with timezone, then to UTC
-      const start = DateTime.fromJSDate(startDate, { zone: timezone });
-      const end = DateTime.fromJSDate(endDate, { zone: timezone });
+      // CRITICAL: Chrono returns dates without timezone info
+      // We need to interpret them AS being in the user's timezone
+      // Create DateTime from components in the specified timezone
+      const start = DateTime.fromObject({
+        year: startDate.getFullYear(),
+        month: startDate.getMonth() + 1,
+        day: startDate.getDate(),
+        hour: startDate.getHours(),
+        minute: startDate.getMinutes(),
+        second: startDate.getSeconds(),
+      }, { zone: timezone });
+      
+      const end = DateTime.fromObject({
+        year: endDate.getFullYear(),
+        month: endDate.getMonth() + 1,
+        day: endDate.getDate(),
+        hour: endDate.getHours(),
+        minute: endDate.getMinutes(),
+        second: endDate.getSeconds(),
+      }, { zone: timezone });
 
       const parseTime = Date.now() - startTime;
 
@@ -124,8 +141,24 @@ export function parseDateTime(
       const startDate = r.start.date();
       const endDate = r.end?.date() || new Date(startDate.getTime() + defaultDurationMinutes * 60 * 1000);
       
-      const start = DateTime.fromJSDate(startDate, { zone: timezone });
-      const end = DateTime.fromJSDate(endDate, { zone: timezone });
+      // Create DateTime from components in the specified timezone
+      const start = DateTime.fromObject({
+        year: startDate.getFullYear(),
+        month: startDate.getMonth() + 1,
+        day: startDate.getDate(),
+        hour: startDate.getHours(),
+        minute: startDate.getMinutes(),
+        second: startDate.getSeconds(),
+      }, { zone: timezone });
+      
+      const end = DateTime.fromObject({
+        year: endDate.getFullYear(),
+        month: endDate.getMonth() + 1,
+        day: endDate.getDate(),
+        hour: endDate.getHours(),
+        minute: endDate.getMinutes(),
+        second: endDate.getSeconds(),
+      }, { zone: timezone });
 
       return {
         start: start.toUTC().toISO()!,
