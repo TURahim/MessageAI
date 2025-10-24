@@ -21,11 +21,18 @@ Return JSON with this exact structure:
 }
 
 Task Types:
-- "scheduling": Mentions specific dates/times for sessions (e.g., "tomorrow at 3pm", "Friday morning", "next week")
+- "scheduling": Mentions specific dates/times for sessions (e.g., "tomorrow at 3pm", "Friday morning", "let's schedule a review session Sunday", "schedule English session")
 - "rsvp": Response to an invitation (e.g., "yes that works", "can't make it", "I'll be there")
-- "task": Homework/deadline mention (e.g., "due Friday", "test on Monday", "homework by next week")
+- "task": Homework/deadline mention (e.g., "due Friday", "test on Monday", "homework by next week", "remember the assignment is due", "also the quiz is due")
 - "urgent": URGENT matters requiring immediate attention (see urgency rules below)
 - null: Normal chat, no action needed (e.g., "how are you", "thanks", "see you later")
+
+IMPORTANT:
+- "task" includes: homework, assignments, tests, quizzes, projects, essays, reading - ANY academic deadline
+- "scheduling" includes: ANY mention of scheduling a session, lesson, review, tutoring, meeting
+- Look for task/scheduling keywords ANYWHERE in the message, even if surrounded by other text
+- "Hey Brian also remember that the english assignment is due monday" → task (confidence 0.8+)
+- "So lets schedule in the English review session on Sunday" → scheduling (confidence 0.8+)
 
 Urgency Detection Rules (HIGH PRECISION TARGET - ≥90%):
 ALWAYS mark as "urgent" with confidence ≥0.85:
