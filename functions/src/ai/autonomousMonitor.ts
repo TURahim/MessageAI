@@ -30,12 +30,14 @@ export interface UnconfirmedEvent {
  * 
  * Criteria for "unconfirmed":
  * - status = 'pending' (not confirmed or declined)
- * - No RSVP responses OR not all participants responded
+ * - Not all REQUIRED participants explicitly accepted (organizer excluded)
  * - Happening in 20-28 hours (24h window with buffer)
  * 
  * @returns Array of unconfirmed events requiring follow-up
  */
 export async function detectUnconfirmedEvents24h(): Promise<UnconfirmedEvent[]> {
+  const t_start = Date.now();
+  
   logger.info('🔍 Detecting unconfirmed events (24h window)');
 
   try {
@@ -43,32 +45,49 @@ export async function detectUnconfirmedEvents24h(): Promise<UnconfirmedEvent[]> 
     const in20Hours = new Date(now.getTime() + 20 * 60 * 60 * 1000);
     const in28Hours = new Date(now.getTime() + 28 * 60 * 60 * 1000);
 
-    // Query events in 20-28 hour window that are still pending
+    // Firestore index required: events(status ASC, startTime ASC)
     const eventsSnapshot = await admin.firestore()
       .collection('events')
       .where('startTime', '>=', admin.firestore.Timestamp.fromDate(in20Hours))
       .where('startTime', '<=', admin.firestore.Timestamp.fromDate(in28Hours))
       .where('status', '==', 'pending')
+      .limit(500) // Safety limit
       .get();
+
+    const t_queryEnd = Date.now();
 
     const unconfirmedEvents: UnconfirmedEvent[] = [];
 
     for (const eventDoc of eventsSnapshot.docs) {
+      const correlationId = eventDoc.id.substring(0, 8);
       const event = eventDoc.data();
       const startTime = event.startTime.toDate();
       const participants = event.participants || [];
       const rsvps = event.rsvps || {};
 
-      // Check if all participants have responded
-      const participantsResponded = participants.filter((uid: string) => 
-        rsvps[uid]?.response
+      // 1. Fix: Only count REQUIRED participants (exclude organizer)
+      const required = participants.filter((uid: string) => uid !== event.createdBy);
+      
+      // Skip events with no participants
+      if (required.length === 0) {
+        logger.warn('⚠️ Event has no participants; skipping', {
+          correlationId,
+          eventId: eventDoc.id,
+        });
+        continue;
+      }
+
+      // Check if all REQUIRED participants explicitly accepted
+      const accepted = required.filter((uid: string) => 
+        rsvps[uid]?.response === 'accepted'
       ).length;
 
-      const allResponded = participantsResponded === participants.length;
+      const allAccepted = accepted === required.length;
 
-      // If not all responded, this is unconfirmed
-      if (!allResponded) {
-        const hoursTillStart = (startTime.getTime() - now.getTime()) / (60 * 60 * 1000);
+      // If not all accepted, this is unconfirmed
+      if (!allAccepted) {
+        // 5. Use Math.floor for hours (not rounding)
+        const hoursTillStart = Math.floor((startTime.getTime() - now.getTime()) / (60 * 60 * 1000));
 
         unconfirmedEvents.push({
           eventId: eventDoc.id,
@@ -77,14 +96,20 @@ export async function detectUnconfirmedEvents24h(): Promise<UnconfirmedEvent[]> 
           participants,
           createdBy: event.createdBy,
           conversationId: event.conversationId,
-          hoursTillStart: Math.round(hoursTillStart),
+          hoursTillStart,
         });
       }
     }
 
+    const t_end = Date.now();
+
     logger.info('✅ Unconfirmed events detected', {
       count: unconfirmedEvents.length,
+      eventsQueried: eventsSnapshot.docs.length,
+      detectionDuration: t_queryEnd - t_start,
+      totalDuration: t_end - t_start,
       events: unconfirmedEvents.map(e => ({
+        correlationId: e.eventId.substring(0, 8),
         title: e.title,
         hoursTillStart: e.hoursTillStart,
       })),
@@ -111,18 +136,47 @@ export async function detectUnconfirmedEvents24h(): Promise<UnconfirmedEvent[]> 
 export async function sendUnconfirmedEventNudge(
   event: UnconfirmedEvent
 ): Promise<string | null> {
+  const correlationId = event.eventId.substring(0, 8);
+  
   if (!event.conversationId) {
     logger.warn('⚠️ No conversation ID for event, skipping nudge', {
+      correlationId,
       eventId: event.eventId,
     });
     return null;
   }
 
   try {
+    // 3. Atomic idempotent check-and-create
+    const nudgeType = 'unconfirmed_event_24h';
+    const nudgeId = `${event.eventId}__${nudgeType}`;
+    
+    try {
+      await admin.firestore()
+        .collection('nudge_logs')
+        .doc(nudgeId)
+        .create({
+          eventId: event.eventId,
+          conversationId: event.conversationId,
+          nudgeType,
+          sentAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+    } catch (error: any) {
+      // Already exists - skip sending
+      if (error.code === 6 || error.message?.includes('already exists')) {
+        logger.info('⏭️ Nudge already logged; skipping send', {
+          correlationId,
+          eventId: event.eventId,
+        });
+        return null;
+      }
+      throw error; // Re-throw other errors
+    }
+
     // Create template-based nudge message
     const message = await buildUnconfirmedEventMessage(event);
 
-    // Post to conversation as assistant message
+    // 6. Add message metadata consistency
     const messageRef = await admin.firestore()
       .collection('conversations')
       .doc(event.conversationId)
@@ -131,6 +185,7 @@ export async function sendUnconfirmedEventNudge(
         senderId: 'assistant',
         senderName: 'JellyDM Assistant',
         type: 'text',
+        messageType: 'system_nudge', // NEW: For client rendering
         text: message,
         clientTimestamp: admin.firestore.FieldValue.serverTimestamp(),
         serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
@@ -143,20 +198,20 @@ export async function sendUnconfirmedEventNudge(
           eventId: event.eventId,
           nudgeType: 'unconfirmed_event_24h',
         },
+        createdAt: admin.firestore.FieldValue.serverTimestamp(), // NEW: Explicit createdAt
       });
 
     logger.info('✅ Unconfirmed event nudge sent', {
+      correlationId,
       eventId: event.eventId,
       conversationId: event.conversationId.substring(0, 12),
       messageId: messageRef.id.substring(0, 8),
     });
 
-    // Log nudge for analytics
-    await logNudge(event.eventId, event.conversationId, 'unconfirmed_event_24h');
-
     return messageRef.id;
   } catch (error: any) {
     logger.error('❌ Error sending unconfirmed event nudge', {
+      correlationId,
       error: error.message,
       eventId: event.eventId,
     });
@@ -170,76 +225,52 @@ export async function sendUnconfirmedEventNudge(
  * Uses tutor's timezone for time display
  */
 async function buildUnconfirmedEventMessage(event: UnconfirmedEvent): Promise<string> {
-  // Fetch tutor's timezone
+  // 2. Fetch tutor's timezone and format with Intl.DateTimeFormat
   const { getUserTimezone } = await import('../utils/timezone');
   const tz = await getUserTimezone(event.createdBy);
   
-  const startTime = event.startTime.toLocaleString('en-US', {
+  const fmt = new Intl.DateTimeFormat('en-CA', {
     weekday: 'short',
     month: 'short',
     day: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,
-    timeZone: tz,  // Use tutor's timezone
+    timeZone: tz,
   });
-
+  
+  const startLabel = fmt.format(event.startTime);
   const hoursTillStart = event.hoursTillStart;
 
-  return `📌 Reminder: "${event.title}" is scheduled for ${startTime} (in ~${hoursTillStart} hours).\n\n` +
+  // Include timezone in message for clarity
+  return `📌 Reminder: "${event.title}" is scheduled for ${startLabel} (${tz}) (in ~${hoursTillStart} hours).\n\n` +
     `This session hasn't been confirmed yet. You may want to follow up with participants to confirm attendance.`;
 }
 
 /**
- * Log nudge for analytics
- * Helps track effectiveness of autonomous monitoring
+ * Check if event is unconfirmed
+ * Encapsulates RSVP logic (extracted utility)
+ * 
+ * @param event - Event data with participants and rsvps
+ * @returns true if event needs confirmation
  */
-async function logNudge(
-  eventId: string,
-  conversationId: string,
-  nudgeType: string
-): Promise<void> {
-  try {
-    await admin.firestore().collection('nudge_logs').add({
-      eventId,
-      conversationId,
-      nudgeType,
-      sentAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
-
-    logger.info('📊 Nudge logged for analytics', {
-      nudgeType,
-      eventId: eventId.substring(0, 8),
-    });
-  } catch (error: any) {
-    logger.error('❌ Failed to log nudge', {
-      error: error.message,
-    });
-    // Don't throw - logging failure shouldn't block nudges
+export function isEventUnconfirmed(event: any): boolean {
+  const participants = event.participants || [];
+  const rsvps = event.rsvps || {};
+  
+  // Required participants (exclude organizer)
+  const required = participants.filter((uid: string) => uid !== event.createdBy);
+  
+  if (required.length === 0) {
+    return false; // No participants to confirm
   }
-}
 
-/**
- * Check if nudge was already sent for this event
- * Prevents duplicate nudges
- */
-async function wasNudgeSent(
-  eventId: string,
-  nudgeType: string
-): Promise<boolean> {
-  try {
-    const snapshot = await admin.firestore()
-      .collection('nudge_logs')
-      .where('eventId', '==', eventId)
-      .where('nudgeType', '==', nudgeType)
-      .limit(1)
-      .get();
+  // Check if all required participants explicitly accepted
+  const accepted = required.filter((uid: string) => 
+    rsvps[uid]?.response === 'accepted'
+  ).length;
 
-    return !snapshot.empty;
-  } catch (error) {
-    logger.warn('⚠️ Error checking nudge history', { error });
-    return false; // Default to not sent (allow nudge)
-  }
+  return accepted !== required.length;
 }
 
 /**
@@ -249,6 +280,8 @@ async function wasNudgeSent(
  * @returns Number of nudges sent
  */
 export async function processUnconfirmedEvents(): Promise<number> {
+  const t_processStart = Date.now();
+  
   logger.info('🤖 Processing unconfirmed events');
 
   try {
@@ -262,27 +295,26 @@ export async function processUnconfirmedEvents(): Promise<number> {
     let nudgesSent = 0;
 
     for (const event of unconfirmedEvents) {
-      // Check if nudge already sent
-      const alreadySent = await wasNudgeSent(event.eventId, 'unconfirmed_event_24h');
-      
-      if (alreadySent) {
-        logger.info('⏭️ Nudge already sent for event', {
-          eventId: event.eventId.substring(0, 8),
-        });
-        continue;
-      }
+      const correlationId = event.eventId.substring(0, 8);
 
-      // Send nudge
+      // Send nudge (idempotency handled inside sendUnconfirmedEventNudge)
       const messageId = await sendUnconfirmedEventNudge(event);
       
       if (messageId) {
         nudgesSent++;
+        logger.info('📤 Nudge sent', {
+          correlationId,
+          messageId: messageId.substring(0, 8),
+        });
       }
     }
+
+    const t_processEnd = Date.now();
 
     logger.info('✅ Unconfirmed event processing complete', {
       eventsChecked: unconfirmedEvents.length,
       nudgesSent,
+      totalProcessingDuration: t_processEnd - t_processStart,
     });
 
     return nudgesSent;

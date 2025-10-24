@@ -1,122 +1,146 @@
-Refactor prompt — RSVP Interpreter hardening
+Autonomous Monitor Reliability & Idempotency Upgrade
 
 Goal
-Make interpretRSVP faster, cheaper, and safer by adding strong local rules, robust ambiguity detection, prompt context, confidence clamping, and a timeout—without changing public exports.
+Refactor the Autonomous Monitor module to improve correctness, reliability, and idempotency now that user timezones are supported.
+Focus on these areas: event confirmation logic, idempotent nudges, timezone usage, and query scalability.
 
-Scope
-Edit rsvpInterpreter.ts (or the file containing interpretRSVP) and promptTemplates.ts only if needed. Preserve current exports and logging style (emoji prefixes).
+🧩 Scope
 
-Changes Required
+Modify only the file(s) related to the Autonomous Monitor (autonomousMonitor.ts and any helpers it imports).
+Do not alter unrelated services (e.g., AI analyzers or RSVP interpreters).
+Preserve the current Firestore schema and log style (emoji-prefixed logs).
 
-Robust ambiguity detection (regex)
+⚙️ Changes Required
+1️⃣ Fix “confirmed” event logic
 
-Replace the string-based AMBIGUITY_KEYWORDS + .includes() with word-boundary regexes (case-insensitive, NFKC-normalized).
+Currently an event is considered confirmed if all participants have any response — even declines.
+Update logic to treat an event as confirmed only if all required participants have explicitly accepted.
 
-Include conditional blockers like “yes, but…”, “sounds good, but…”, “however”, “on second thought”.
+Organizer (createdBy) should be excluded from required participants.
 
-Provide one normalize helper:
+Skip or warn on events with no participants.
 
-const NORMALIZE = (s: string) =>
-  s.toLowerCase().normalize('NFKC').replace(/\s+/g, ' ').trim();
+Example:
+
+const required = participants.filter(uid => uid !== event.createdBy);
+const accepted = required.filter(uid => rsvps[uid]?.response === 'accept').length;
+const allAccepted = required.length > 0 && accepted === required.length;
+if (!allAccepted) { /* unconfirmed */ }
+
+2️⃣ Use user timezones for formatting
+
+Use the getUserTimezone(event.createdBy) helper before formatting dates.
+
+Replace toLocaleString() with:
+
+const tz = await getUserTimezone(event.createdBy);
+const fmt = new Intl.DateTimeFormat('en-CA', {
+  weekday: 'short', month: 'short', day: 'numeric',
+  hour: 'numeric', minute: '2-digit', hour12: true, timeZone: tz,
+});
+const startLabel = fmt.format(event.startTime);
 
 
-Use an AMBIGUITY_REGEXES: RegExp[] and a helper:
-function hasAmbiguity(textN: string): boolean { return AMBIGUITY_REGEXES.some(rx => rx.test(textN)); }
+Include (tz) in the nudge message to make it explicit.
 
-Strong-rule fast path (skip LLM when obvious)
+3️⃣ Add idempotency for nudges
 
-Add deterministic accept/decline regex sets and a helper:
+Prevent duplicate nudges by writing an idempotent record before sending the message.
 
-const ACCEPT_REGEXES = [ /\by(es|up)\b/, /\bsure\b/, /\bsounds\s+good\b/, /\bworks\s+for\s+me\b/, /\bthat\s+works\b/, /\bi'?ll\s+be\s+there\b/, /\bcount\s+me\s+in\b/ ];
-const DECLINE_REGEXES = [ /\bno(pe)?\b/, /\b(can('| )?t|cannot)\s+(make|do|come|attend)\b/, /\bsorry[, ]+\s*i('?m)?\s+(busy|booked|not\s+available)\b/, /\bwon'?t\s+be\s+able\s+to\b/ ];
-function quickClassify(textN: string): RSVPResponse | null {
-  if (ACCEPT_REGEXES.some(r => r.test(textN))) return 'accept';
-  if (DECLINE_REGEXES.some(r => r.test(textN))) return 'decline';
-  return null;
+Replace wasNudgeSent() + logNudge() with a single atomic write:
+
+const id = `${event.eventId}__${nudgeType}`;
+await admin.firestore().collection('nudge_logs').doc(id).create({
+  eventId: event.eventId,
+  conversationId: event.conversationId,
+  nudgeType,
+  sentAt: admin.firestore.FieldValue.serverTimestamp(),
+});
+
+
+If create() throws “already exists,” skip sending the message and log:
+
+logger.info('⏭️ Nudge already logged; skipping send', { eventId });
+
+4️⃣ Add query limit + index note
+
+Add a .limit(500) safeguard to your Firestore event query.
+
+Add a code comment noting the required composite index:
+
+// Firestore index: events(status ASC, startTime ASC)
+
+5️⃣ Improve hours calculation + edge handling
+
+Use Math.floor(hoursTillStart) instead of rounding.
+
+Handle events with zero participants:
+
+if (required.length === 0) {
+  logger.warn('⚠️ Event has no participants; skipping', { eventId });
+  continue;
 }
 
+6️⃣ Add message metadata consistency
 
-In interpretRSVP, normalize once, run hasAmbiguity(textN) and quickClassify(textN).
-If quickClassify returns a label and not ambiguous, return immediately with confidence: 0.9, shouldAutoRecord policy (see §5).
+When creating the nudge message, set:
 
-Use event context in the prompt
-
-If eventContext is provided, append a one-line context to the prompt:
-
-const ctx = eventContext
-  ? `\nEvent: ${eventContext.eventTitle ?? 'Untitled'} (ID ${eventContext.eventId.slice(0,8)})`
-  : '';
-const prompt = `${RSVP_INTERPRETATION_PROMPT}${ctx}\n\n"${text}"`;
+messageType: 'system_nudge',
+createdAt: admin.firestore.FieldValue.serverTimestamp(),
 
 
-Keep the base RSVP_INTERPRETATION_PROMPT unchanged otherwise.
+This helps the client render system messages differently and sort correctly.
 
-Confidence clamping + timeout/retry
+7️⃣ Add better observability
 
-Add helpers:
+Add correlationId (eventId substring) to every log line in this module.
 
-const clamp01 = (n: number) => Math.max(0, Math.min(1, n ?? 0));
+Log timing stats:
 
+Detection duration (event query → filter complete)
 
-Wrap the model call with an AbortController timeout of 3s. On timeout or transient error (429/5xx), do one retry; otherwise return fallback unclear.
+Total processing duration (start → all nudges sent)
 
-async function callModel(prompt: string) { /* openai('gpt-3.5-turbo'), schema, temperature:0.3, maxTokens:50, signal */ }
+✅ Acceptance Criteria
 
+ “Confirmed” logic checks accepted responses only.
 
-After the call, clamp the confidence to [0,1]. If hasAmbiguity, cap at <= 0.6 and log the adjustment.
+ Time formatting uses each tutor’s timezone via getUserTimezone().
 
-Safer auto-record policy
+ Duplicate nudges prevented via idempotent log documents.
 
-Keep the baseline: auto-record when confidence >= 0.7, and !hasAmbiguity, and response != 'unclear'.
+ Query safely limited and indexed.
 
-Add a min length guard to avoid auto-recording single-word ambiguous replies:
+ hoursTillStart always floored, not rounded.
 
-const MIN_LEN_FOR_AUTO = 3;
-const shouldAutoRecord =
-  adjustedConfidence >= 0.7 &&
-  !hasAmbiguity &&
-  parsed.response !== 'unclear' &&
-  text.trim().length >= MIN_LEN_FOR_AUTO;
+ Events with no participants are skipped gracefully.
 
+ All logs include a correlationId and step timings.
 
-Apply the same logic to fast-path decisions.
+ No Firestore schema changes required.
 
-Unify exported ambiguity helper
+ TypeScript compiles cleanly; all logger calls remain consistent.
 
-Update the exported hasAmbiguityWords(text: string) to reuse the regex-based logic to avoid divergence with the main function.
+🧠 Optional Stretch (if Cursor has bandwidth)
 
-Logging
+Extract new utility functions:
 
-Keep emoji prefixes and current patterns.
+isEventUnconfirmed(event) → encapsulates RSVP logic.
 
-On fast-path classification, log "⚡ RSVP quick-classified" with { response, confidence, hasAmbiguity, shouldAutoRecord }.
+sendTemplateNudge(event, templateId) → generic for future templates.
 
-On LLM timeout/retry, log "⏱️ RSVP LLM timeout; retrying once" and final outcome log.
+Add unit tests for:
 
-Acceptance Criteria
+Events with mixed accept/decline.
 
-TypeScript compiles with no new errors; no changes to public exports (interpretRSVP, hasAmbiguityWords, types).
+Duplicate nudge run.
 
-For inputs:
+Timezone formatting differences.
 
-"Yes that works" → fast-path accept, confidence≈0.9, shouldAutoRecord:true.
+🧩 Context Summary for Cursor
 
-"Sorry, I'm busy" → fast-path decline, confidence≈0.9, shouldAutoRecord:true.
+Firestore collections: /events, /conversations/{id}/messages, /nudge_logs.
 
-"Maybe, let me check" → ambiguous, LLM may classify but confidence capped ≤0.6; shouldAutoRecord:false.
+User timezone is now stored under /users/{uid}.timezone.
 
-"Sounds good, but I might need to move it" → detected conditional blocker; hasAmbiguity:true; shouldAutoRecord:false.
-
-"Ok" (short) → likely LLM 'unclear' or low confidence; shouldAutoRecord:false.
-
-Event context provided (e.g., "Yes that works" with eventTitle:"Math, Fri 5pm") → prompt includes context; still accept.
-
-LLM call times out after ~3s with one retry; on persistent failure returns 'unclear' safely.
-
-Style/Constraints
-
-Do not log full message text; keep substrings as already implemented.
-
-Keep model temperature: 0.3, maxTokens: 50.
-
-Prefer minimal code churn; factor helpers at top of module.
+This function runs as a scheduled Cloud Function every few hours.
