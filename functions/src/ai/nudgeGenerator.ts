@@ -77,26 +77,56 @@ export async function detectRecentlyEndedSessions(
     const now = new Date();
     const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
 
+    // 2. Query tuning: add limit and ensure status filter
+    // Index required: events(createdBy ASC, status ASC, endTime ASC)
     const eventsSnapshot = await admin.firestore()
       .collection('events')
       .where('createdBy', '==', userId) // Only tutor's events
+      .where('status', '==', 'confirmed') // Only confirmed sessions
       .where('endTime', '>=', admin.firestore.Timestamp.fromDate(twoHoursAgo))
       .where('endTime', '<=', admin.firestore.Timestamp.now())
-      .where('status', '==', 'confirmed') // Only confirmed sessions
+      .limit(200) // Safety limit
       .get();
 
-    const recentSessions = eventsSnapshot.docs.map(doc => {
-      const data = doc.data();
-      return {
-        eventId: doc.id,
-        title: data.title || 'Untitled session',
-        endTime: data.endTime.toDate(),
-        conversationId: data.conversationId,
-      };
-    });
+    const recentSessions = eventsSnapshot.docs
+      .map(doc => {
+        const data = doc.data();
+        
+        // 5. Guard toDate() calls
+        if (!data.endTime) {
+          logger.warn('⚠️ Event missing endTime, skipping', {
+            eventId: doc.id,
+          });
+          return null;
+        }
+
+        const endTime = data.endTime.toDate();
+        
+        // Validate date
+        if (isNaN(endTime.getTime())) {
+          logger.error('❌ Invalid endTime in event, skipping', {
+            eventId: doc.id,
+          });
+          return null;
+        }
+
+        return {
+          eventId: doc.id,
+          title: data.title || 'Untitled session',
+          endTime,
+          conversationId: data.conversationId,
+        };
+      })
+      .filter(s => s !== null) as Array<{
+        eventId: string;
+        title: string;
+        endTime: Date;
+        conversationId?: string;
+      }>;
 
     logger.info('✅ Recently ended sessions detected', {
       count: recentSessions.length,
+      queriedDocs: eventsSnapshot.docs.length,
     });
 
     return recentSessions;
@@ -126,13 +156,18 @@ export async function detectLongGaps(
   try {
     const now = new Date();
     const fourteenDaysAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+    const oneYearAgo = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
 
-    // Get all of tutor's past events
+    // 2. Query tuning: add status filter, oneYearAgo lower bound, limit
+    // Index required: events(createdBy ASC, status ASC, endTime DESC)
     const pastEventsSnapshot = await admin.firestore()
       .collection('events')
       .where('createdBy', '==', userId)
+      .where('status', '==', 'confirmed') // Only confirmed sessions
+      .where('endTime', '>=', admin.firestore.Timestamp.fromDate(oneYearAgo)) // Lower bound
       .where('endTime', '<=', admin.firestore.Timestamp.now())
       .orderBy('endTime', 'desc')
+      .limit(2000) // Safety limit
       .get();
 
     // Group by conversation and find last session
@@ -143,7 +178,23 @@ export async function detectLongGaps(
       const conversationId = data.conversationId;
       if (!conversationId) return;
 
+      // 5. Guard toDate() calls
+      if (!data.endTime) {
+        logger.warn('⚠️ Event missing endTime, skipping', {
+          eventId: doc.id,
+        });
+        return;
+      }
+
       const endTime = data.endTime.toDate();
+      
+      // Validate date
+      if (isNaN(endTime.getTime())) {
+        logger.error('❌ Invalid endTime in event, skipping', {
+          eventId: doc.id,
+        });
+        return;
+      }
 
       if (!conversationLastSession.has(conversationId)) {
         conversationLastSession.set(conversationId, endTime);
@@ -160,7 +211,8 @@ export async function detectLongGaps(
 
     for (const [conversationId, lastSessionDate] of conversationLastSession.entries()) {
       if (lastSessionDate < fourteenDaysAgo) {
-        const daysSince = (now.getTime() - lastSessionDate.getTime()) / (24 * 60 * 60 * 1000);
+        // 5. Use Math.floor for whole days
+        const daysSince = Math.floor((now.getTime() - lastSessionDate.getTime()) / (24 * 60 * 60 * 1000));
 
         // Get conversation details for student name
         const convDoc = await admin.firestore().doc(`conversations/${conversationId}`).get();
@@ -178,7 +230,7 @@ export async function detectLongGaps(
         longGaps.push({
           conversationId,
           lastSessionDate,
-          daysSinceLastSession: Math.round(daysSince),
+          daysSinceLastSession: daysSince,
           studentName,
         });
       }
@@ -186,6 +238,7 @@ export async function detectLongGaps(
 
     logger.info('✅ Long gaps detected', {
       count: longGaps.length,
+      queriedDocs: pastEventsSnapshot.docs.length,
     });
 
     return longGaps;
@@ -206,12 +259,14 @@ export async function sendPostSessionNotePrompt(
   conversationId: string,
   sessionTitle: string
 ): Promise<string | null> {
+  const correlationId = eventId.substring(0, 8);
+
   try {
-    // Check if prompt already sent
-    const alreadySent = await wasNudgeSent(eventId, 'post_session_note');
-    if (alreadySent) {
-      logger.info('⏭️ Post-session prompt already sent', {
-        eventId: eventId.substring(0, 8),
+    // 1. Reserve nudge BEFORE writing message (atomic idempotency)
+    const reserved = await reserveNudge(eventId, 'post_session_note', conversationId);
+    if (!reserved) {
+      logger.info('⏭️ Post-session prompt already reserved', {
+        correlationId,
       });
       return null;
     }
@@ -219,6 +274,7 @@ export async function sendPostSessionNotePrompt(
     const message = `📝 How did the "${sessionTitle}" session go?\n\n` +
       `Feel free to add any notes about topics covered, homework assigned, or areas to focus on next time.`;
 
+    // 4. Add message metadata consistency
     const messageRef = await admin.firestore()
       .collection('conversations')
       .doc(conversationId)
@@ -227,6 +283,7 @@ export async function sendPostSessionNotePrompt(
         senderId: 'assistant',
         senderName: 'JellyDM Assistant',
         type: 'text',
+        messageType: 'system_nudge', // NEW: For client rendering
         text: message,
         clientTimestamp: admin.firestore.FieldValue.serverTimestamp(),
         serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
@@ -239,18 +296,18 @@ export async function sendPostSessionNotePrompt(
           eventId,
           nudgeType: 'post_session_note',
         },
+        createdAt: admin.firestore.FieldValue.serverTimestamp(), // Explicit createdAt
       });
 
-    await logNudge(eventId, conversationId, 'post_session_note');
-
     logger.info('✅ Post-session prompt sent', {
-      eventId: eventId.substring(0, 8),
+      correlationId,
       conversationId: conversationId.substring(0, 12),
     });
 
     return messageRef.id;
   } catch (error: any) {
     logger.error('❌ Error sending post-session prompt', {
+      correlationId,
       error: error.message,
     });
     return null;
@@ -266,12 +323,14 @@ export async function sendLongGapAlert(
   daysSinceLastSession: number,
   studentName?: string
 ): Promise<string | null> {
+  const correlationId = conversationId.substring(0, 12);
+
   try {
-    // Check if alert already sent
-    const alreadySent = await wasNudgeSent(conversationId, 'long_gap_alert');
-    if (alreadySent) {
-      logger.info('⏭️ Long gap alert already sent', {
-        conversationId: conversationId.substring(0, 12),
+    // 1. Reserve nudge BEFORE writing message (atomic idempotency)
+    const reserved = await reserveNudge(conversationId, 'long_gap_alert', conversationId);
+    if (!reserved) {
+      logger.info('⏭️ Long gap alert already reserved', {
+        correlationId,
       });
       return null;
     }
@@ -280,6 +339,7 @@ export async function sendLongGapAlert(
     const message = `📅 It's been ${daysSinceLastSession} days since your last session${studentText}.\n\n` +
       `Consider scheduling a follow-up session to maintain momentum.`;
 
+    // 4. Add message metadata consistency
     const messageRef = await admin.firestore()
       .collection('conversations')
       .doc(conversationId)
@@ -288,6 +348,7 @@ export async function sendLongGapAlert(
         senderId: 'assistant',
         senderName: 'JellyDM Assistant',
         type: 'text',
+        messageType: 'system_nudge', // NEW: For client rendering
         text: message,
         clientTimestamp: admin.firestore.FieldValue.serverTimestamp(),
         serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
@@ -299,18 +360,18 @@ export async function sendLongGapAlert(
           role: 'assistant',
           nudgeType: 'long_gap_alert',
         },
+        createdAt: admin.firestore.FieldValue.serverTimestamp(), // Explicit createdAt
       });
 
-    await logNudge('', conversationId, 'long_gap_alert');
-
     logger.info('✅ Long gap alert sent', {
-      conversationId: conversationId.substring(0, 12),
+      correlationId,
       daysSince: daysSinceLastSession,
     });
 
     return messageRef.id;
   } catch (error: any) {
     logger.error('❌ Error sending long gap alert', {
+      correlationId,
       error: error.message,
     });
     return null;
@@ -358,11 +419,13 @@ export async function processPostSessionNotes(
 export async function processLongGapAlerts(
   userId: string
 ): Promise<number> {
+  const correlationId = userId.substring(0, 8);
+
   // Check user preferences
   const prefs = await getUserNudgePreferences(userId);
   if (!prefs.enabled || !prefs.longGapAlertsEnabled) {
     logger.info('⏭️ Long gap alerts disabled for user', {
-      userId: userId.substring(0, 8),
+      correlationId,
     });
     return 0;
   }
@@ -370,58 +433,83 @@ export async function processLongGapAlerts(
   const longGaps = await detectLongGaps(userId);
   let alertsSent = 0;
 
-  for (const gap of longGaps) {
-    const messageId = await sendLongGapAlert(
-      gap.conversationId,
-      gap.daysSinceLastSession,
-      gap.studentName
+  // 6. Process with small concurrency pool (10 at a time)
+  const BATCH_SIZE = 10;
+  for (let i = 0; i < longGaps.length; i += BATCH_SIZE) {
+    const batch = longGaps.slice(i, i + BATCH_SIZE);
+    
+    const results = await Promise.allSettled(
+      batch.map(gap => 
+        sendLongGapAlert(
+          gap.conversationId,
+          gap.daysSinceLastSession,
+          gap.studentName
+        )
+      )
     );
 
-    if (messageId) alertsSent++;
+    results.forEach(result => {
+      if (result.status === 'fulfilled' && result.value) {
+        alertsSent++;
+      }
+    });
   }
+
+  logger.info('✅ Long gap alerts processed', {
+    correlationId,
+    gapsFound: longGaps.length,
+    alertsSent,
+  });
 
   return alertsSent;
 }
 
 /**
- * Check if nudge was already sent
+ * 1. Reserve nudge slot (atomic idempotency)
+ * 
+ * Uses doc.create() for atomic check-and-reserve
+ * Prevents duplicate nudges via deterministic ID
+ * 
+ * @param entityId - Event ID or conversation ID
+ * @param nudgeType - Type of nudge
+ * @param conversationId - Optional conversation context
+ * @returns true if reserved, false if already exists
  */
-async function wasNudgeSent(
+async function reserveNudge(
   entityId: string,
-  nudgeType: string
+  nudgeType: NudgeType,
+  conversationId?: string
 ): Promise<boolean> {
+  // Deterministic ID
+  const nudgeId = `${nudgeType}__${entityId}`;
+  
   try {
-    const snapshot = await admin.firestore()
+    await admin.firestore()
       .collection('nudge_logs')
-      .where('eventId', '==', entityId)
-      .where('nudgeType', '==', nudgeType)
-      .limit(1)
-      .get();
-
-    return !snapshot.empty;
-  } catch (error) {
-    logger.warn('⚠️ Error checking nudge history', { error });
-    return false;
-  }
-}
-
-/**
- * Log nudge for analytics
- */
-async function logNudge(
-  eventId: string,
-  conversationId: string,
-  nudgeType: string
-): Promise<void> {
-  try {
-    await admin.firestore().collection('nudge_logs').add({
-      eventId,
-      conversationId,
-      nudgeType,
-      sentAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
+      .doc(nudgeId)
+      .create({
+        entityId,
+        conversationId: conversationId || '',
+        nudgeType,
+        sentAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    
+    return true; // Reserved successfully
   } catch (error: any) {
-    logger.error('❌ Failed to log nudge', { error: error.message });
+    // Already exists (code 6 or 'already exists' message)
+    if (error.code === 6 || error.message?.includes('already exists')) {
+      logger.info('⏭️ Nudge already reserved', {
+        nudgeId: nudgeId.substring(0, 40),
+      });
+      return false;
+    }
+    
+    // Other error - log and fail
+    logger.error('❌ Failed to reserve nudge', {
+      nudgeId,
+      error: error.message,
+    });
+    return false;
   }
 }
 
