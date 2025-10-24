@@ -263,6 +263,43 @@ export const onMessageCreated = onDocumentCreated({
           task: analysis.gating.task,
         });
 
+        // Post loading message immediately for better UX
+        // Generate correlationId for tracking (same as in messageAnalyzer)
+        const correlationId = messageId.substring(0, 8);
+        
+        try {
+          await admin.firestore()
+            .collection('conversations')
+            .doc(conversationId)
+            .collection('messages')
+            .add({
+              senderId: 'assistant',
+              senderName: 'JellyDM Assistant',
+              text: '📅 Processing your request...',
+              type: 'text',
+              status: 'sent',
+              meta: {
+                role: 'assistant',
+                type: 'ai_loading',
+                triggerTask: analysis.gating.task,
+                correlationId, // Store correlationId for replacement tracking
+              },
+              clientTimestamp: admin.firestore.FieldValue.serverTimestamp(),
+              serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
+              readBy: [],
+              readCount: 0,
+              retryCount: 0,
+            });
+          logger.info('⏳ Posted loading message for AI orchestration', {
+            correlationId,
+          });
+        } catch (loadingError: any) {
+          logger.warn('⚠️ Failed to post loading message', {
+            error: loadingError.message,
+          });
+          // Continue with orchestration even if loading message fails
+        }
+
         const { processMessageWithAI } = await import('./ai/messageAnalyzer');
         await processMessageWithAI(
           {

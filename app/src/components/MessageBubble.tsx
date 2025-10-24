@@ -7,6 +7,7 @@ import EventCard from './EventCard';
 import DeadlineCard from './DeadlineCard';
 import ConflictWarning from './ConflictWarning';
 import RSVPButtons from './RSVPButtons';
+import LoadingCard from './LoadingCard';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import dayjs from 'dayjs';
@@ -239,6 +240,11 @@ export default function MessageBubble({
     */
   };
   // END MOCK_CARD_HANDLERS
+
+  // Render AI loading card
+  if (message.meta?.type === 'ai_loading') {
+    return <LoadingCard />;
+  }
 
   // Render assistant message with inline cards
   if (isAssistantMessage) {

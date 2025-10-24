@@ -1,7 +1,11 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Modal, Pressable, ScrollView, Alert } from 'react-native';
 import dayjs from 'dayjs';
 import { Event } from './EventListItem';
+import { db, auth } from '@/lib/firebase';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { router } from 'expo-router';
+import RSVPButtons from './RSVPButtons';
 
 interface EventDetailsSheetProps {
   visible: boolean;
@@ -9,7 +13,76 @@ interface EventDetailsSheetProps {
   onClose: () => void;
 }
 
+interface ParticipantInfo {
+  id: string;
+  name: string;
+}
+
 export default function EventDetailsSheet({ visible, event, onClose }: EventDetailsSheetProps) {
+  const [participants, setParticipants] = useState<ParticipantInfo[]>([]);
+  const [loadingParticipants, setLoadingParticipants] = useState(false);
+  const [userRsvp, setUserRsvp] = useState<'accepted' | 'declined' | null>(null);
+  const currentUserId = auth.currentUser?.uid;
+
+  // Fetch participant names when event changes
+  useEffect(() => {
+    if (!event || !event.participants) return;
+
+    const fetchParticipants = async () => {
+      setLoadingParticipants(true);
+      try {
+        const participantInfos: ParticipantInfo[] = [];
+        
+        for (const participantId of event.participants) {
+          const userDoc = await getDoc(doc(db, 'users', participantId));
+          if (userDoc.exists()) {
+            participantInfos.push({
+              id: participantId,
+              name: userDoc.data().displayName || 'Unknown User',
+            });
+          } else {
+            participantInfos.push({
+              id: participantId,
+              name: 'Unknown User',
+            });
+          }
+        }
+        
+        setParticipants(participantInfos);
+      } catch (error) {
+        console.error('Error fetching participants:', error);
+      } finally {
+        setLoadingParticipants(false);
+      }
+    };
+
+    fetchParticipants();
+  }, [event?.id, event?.participants]);
+
+  // Fetch user's RSVP status from the event
+  useEffect(() => {
+    if (!event || !currentUserId) return;
+
+    const fetchUserRsvp = async () => {
+      try {
+        const eventDoc = await getDoc(doc(db, 'events', event.id));
+        if (eventDoc.exists()) {
+          const eventData = eventDoc.data();
+          const rsvps = eventData?.rsvps || {};
+          if (rsvps[currentUserId]) {
+            setUserRsvp(rsvps[currentUserId].response === 'accept' ? 'accepted' : 'declined');
+          } else {
+            setUserRsvp(null);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching RSVP status:', error);
+      }
+    };
+
+    fetchUserRsvp();
+  }, [event?.id, currentUserId]);
+
   if (!event) return null;
 
   const formatDateTime = () => {
@@ -38,13 +111,60 @@ export default function EventDetailsSheet({ visible, event, onClose }: EventDeta
     }
   };
 
+  // Handle participant profile navigation
+  const handleParticipantPress = (participantId: string) => {
+    router.push(`/profile/${participantId}`);
+    onClose();
+  };
+
+  // Handle RSVP Accept
+  const handleRsvpAccept = async () => {
+    if (!currentUserId) return;
+    
+    try {
+      const eventRef = doc(db, 'events', event.id);
+      await updateDoc(eventRef, {
+        [`rsvps.${currentUserId}`]: {
+          response: 'accept',
+          respondedAt: new Date(),
+        },
+        updatedAt: new Date(),
+      });
+      
+      setUserRsvp('accepted');
+      Alert.alert('Confirmed', 'You have accepted this event');
+    } catch (error: any) {
+      Alert.alert('Error', error.message);
+    }
+  };
+
+  // Handle RSVP Decline
+  const handleRsvpDecline = async () => {
+    if (!currentUserId) return;
+    
+    try {
+      const eventRef = doc(db, 'events', event.id);
+      await updateDoc(eventRef, {
+        [`rsvps.${currentUserId}`]: {
+          response: 'decline',
+          respondedAt: new Date(),
+        },
+        updatedAt: new Date(),
+      });
+      
+      setUserRsvp('declined');
+      Alert.alert('Declined', 'You have declined this event');
+    } catch (error: any) {
+      Alert.alert('Error', error.message);
+    }
+  };
+
   // BEGIN MOCK_EVENT_ACTIONS
   // TODO: Replace these with real backend calls
   // See JellyDMTasklist.md PR6.3 for replacement code
   const handleMessageGroup = () => {
     // Wire to real navigation
     if (event.conversationId) {
-      const { router } = require('expo-router');
       router.push(`/chat/${event.conversationId}`);
       onClose();
     } else {
@@ -131,21 +251,42 @@ export default function EventDetailsSheet({ visible, event, onClose }: EventDeta
             {/* Participants */}
             <View style={styles.section}>
               <Text style={styles.label}>Participants ({event.participants.length})</Text>
-              {event.participantNames && event.participantNames.length > 0 ? (
-                event.participantNames.map((name, index) => (
-                  <View key={index} style={styles.participantItem}>
+              {loadingParticipants ? (
+                <Text style={styles.value}>Loading participants...</Text>
+              ) : participants.length > 0 ? (
+                participants.map((participant) => (
+                  <TouchableOpacity
+                    key={participant.id}
+                    style={styles.participantItem}
+                    onPress={() => handleParticipantPress(participant.id)}
+                    activeOpacity={0.7}
+                  >
                     <View style={styles.participantAvatar}>
                       <Text style={styles.participantAvatarText}>
-                        {name.charAt(0).toUpperCase()}
+                        {participant.name.charAt(0).toUpperCase()}
                       </Text>
                     </View>
-                    <Text style={styles.participantName}>{name}</Text>
-                  </View>
+                    <Text style={styles.participantName}>{participant.name}</Text>
+                    <Text style={styles.viewProfile}>View →</Text>
+                  </TouchableOpacity>
                 ))
               ) : (
                 <Text style={styles.value}>{event.participants.length} participants</Text>
               )}
             </View>
+
+            {/* RSVP Section - Only show for pending events */}
+            {event.status === 'pending' && (
+              <View style={styles.section}>
+                <Text style={styles.label}>Your Response</Text>
+                <RSVPButtons
+                  onAccept={handleRsvpAccept}
+                  onDecline={handleRsvpDecline}
+                  userResponse={userRsvp}
+                  disabled={false}
+                />
+              </View>
+            )}
 
             {/* Actions */}
             <View style={styles.actions}>
@@ -268,6 +409,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: '#F9F9F9',
+    borderRadius: 10,
+    marginBottom: 8,
   },
   participantAvatar: {
     width: 40,
@@ -284,8 +429,14 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   participantName: {
+    flex: 1,
     fontSize: 16,
     color: '#000',
+  },
+  viewProfile: {
+    fontSize: 14,
+    color: '#007AFF',
+    fontWeight: '500',
   },
   actions: {
     marginTop: 8,

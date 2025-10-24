@@ -182,12 +182,11 @@ export const TIMEZONE_REQUIRED_TOOLS: string[] = [
 export function getToolsForTaskType(taskType: string) {
   switch (taskType) {
     case 'scheduling':
-      // Include rsvp.create_invite for sending invitations
+      // Strict toolset: ONLY parsing, event creation, and confirmation
+      // Removed schedule.check_conflicts and rsvp.create_invite to reduce model confusion
       return {
         'time.parse': timeParseSchema,
         'schedule.create_event': scheduleCreateEventSchema,
-        'schedule.check_conflicts': scheduleCheckConflictsSchema,
-        'rsvp.create_invite': rsvpCreateInviteSchema,
         'messages.post_system': messagesPostSystemSchema,
       };
     case 'rsvp':

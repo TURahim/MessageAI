@@ -52,6 +52,7 @@ export interface ScheduleCreateEventOutput {
   eventId?: string;
   hasConflict?: boolean;
   conflictMessage?: string;
+  wasDeduped?: boolean; // Idempotency: true if event already existed
   error?: string;
 }
 
@@ -128,6 +129,7 @@ export interface TaskCreateInput {
 export interface TaskCreateOutput {
   success: boolean;
   taskId?: string;
+  wasDeduped?: boolean; // Idempotency: true if task already existed
   error?: string;
 }
 
@@ -160,6 +162,8 @@ export interface MessagesPostSystemInput {
 export interface MessagesPostSystemOutput {
   success: boolean;
   messageId?: string;
+  wasDeduped?: boolean; // Idempotency: true if message already existed
+  wasReplacement?: boolean; // Loading card: true if replaced loading message
   error?: string;
 }
 

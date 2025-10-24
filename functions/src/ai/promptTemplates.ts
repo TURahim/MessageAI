@@ -20,14 +20,34 @@ Return JSON with this exact structure:
   "confidence": 0.0-1.0
 }
 
+**PRIORITY CLASSIFICATION RULES (APPLY FIRST):**
+1. If message contains SPECIFIC_TIME + SESSION_KEYWORD → "scheduling" (even if "reminder" word present)
+   - SESSION_KEYWORDS: lesson, session, class, tutoring, review, meeting, call
+   - SPECIFIC_TIME: time expressions like "Sunday 5pm", "tomorrow at 3", "next week Tuesday", "Friday morning"
+   
+2. Examples that MUST be "scheduling" NOT "reminder":
+   - "reminder we have a lesson Sunday 5pm" → scheduling
+   - "just reminding you about our session tomorrow at 3" → scheduling  
+   - "don't forget class next Tuesday 4pm" → scheduling
+   - "oh hey just a reminder that you have a lesson for 5 pm on sunday" → scheduling
+
+3. ONLY classify as "reminder" if:
+   - Generic reminder with NO specific session time (e.g., "remember to bring textbook")
+   - OR reminder about something other than a session (e.g., "don't forget the homework")
+
 Task Types:
-- "scheduling": Mentions specific dates/times for sessions (e.g., "tomorrow at 3pm", "let's schedule a review session Sunday", "meet Friday morning")
+- "scheduling": Creating/planning SESSIONS, LESSONS, or MEETINGS with specific date/time (e.g., "tomorrow at 3pm", "lesson Tuesday 5pm", "review session Sunday", "meet Friday morning", "class next week at 2pm")
 - "rsvp": Response to an invitation (e.g., "yes that works", "can't make it", "I'll be there", "we're both coming")
 - "task": General action items WITHOUT explicit due dates (e.g., "review chapter 5", "practice problems", "work on essay")
-- "deadline": Academic tasks WITH explicit due dates or deadlines (e.g., "homework due Friday", "test on Monday", "submit by next week", "quiz tomorrow")
-- "reminder": Proactive follow-ups or nudges (e.g., "remember to bring textbook", "don't forget", "just a reminder")
+- "deadline": HOMEWORK/ASSIGNMENTS/TESTS with due dates but NO specific meeting time (e.g., "homework due Friday", "test on Monday", "submit essay by next week", "quiz tomorrow morning" [when it's the test itself, not a meeting])
+- "reminder": Proactive follow-ups or nudges WITHOUT specific session times (e.g., "remember to bring textbook", "don't forget the homework")
 - "urgent": URGENT matters requiring immediate attention (see urgency rules below)
 - null: Normal chat, no action needed (e.g., "how are you", "thanks")
+
+CRITICAL DISTINCTION - Scheduling vs Deadline:
+- Scheduling: "lesson/session/meeting/class" + "specific time" → "math lesson Tuesday 5pm" is SCHEDULING
+- Deadline: "homework/assignment/test" + "due date" (no meeting time) → "homework due Tuesday" is DEADLINE
+- If message mentions BOTH a specific TIME (5pm, 3:30, morning, afternoon) AND a meeting type (lesson/session/review), it's SCHEDULING, not deadline
 
 IMPORTANT - Priority Order (for mixed messages):
 1. If mixed, pick the highest-impact actionable intent: urgent > scheduling > deadline > rsvp > reminder > task > null
@@ -38,16 +58,20 @@ IMPORTANT - Priority Order (for mixed messages):
 6. Look for keywords ANYWHERE in the message, even if surrounded by other text
 
 Examples:
-- "homework due Friday" → deadline (explicit due date)
-- "test on Monday" → deadline (specific date)
+- "homework due Friday" → deadline (explicit due date for assignment)
+- "test on Monday" → deadline (specific date for test)
 - "submit essay by next Tuesday" → deadline (deadline keyword + date)
 - "Hey Brian also remember that the english assignment is due monday" → deadline (due date present)
+- "math lesson Tuesday 5pm" → scheduling (lesson + specific time)
+- "And also for next week we will have a math lesson tuesday 5 pm after class" → scheduling (lesson + specific time)
+- "let's do English review Sunday at 3pm" → scheduling (session + time)
 - "review chapter 5 before next class" → task (no specific due date, vague timing)
 - "finish the essay soon" → task (no explicit deadline)
 - "remember to bring your textbook" → reminder (proactive nudge)
 - "don't forget about the quiz tomorrow" → deadline (has explicit due date: tomorrow)
 - "So lets schedule in the English review session on Sunday" → scheduling (session + date)
 - "Thanks! Let's meet tomorrow at 3pm" → scheduling (meeting + specific time beats casual thanks)
+- "We have class next Tuesday at 4pm" → scheduling (class + specific time)
 
 Urgency Detection Rules (HIGH PRECISION TARGET - ≥90%):
 ALWAYS mark as "urgent" with confidence ≥0.85:
@@ -267,25 +291,38 @@ ${ragContext || 'No recent context available'}
 
 **Tone:** ${toneGuidance}
 
-**Your Task:**
-1. Parse the date/time from the message using time.parse tool
-2. Create a calendar event using schedule.create_event tool
-3. If conflicts detected, alternatives will be suggested automatically
+**CRITICAL 3-STEP WORKFLOW (YOU MUST COMPLETE ALL 3 STEPS):**
+
+STEP 1: Parse Time
+→ Call time.parse with the user's message to extract the date/time
+
+STEP 2: Create Event
+→ Call schedule.create_event with the parsed time, title, and participants
+
+STEP 3: Post Confirmation (MANDATORY - NEVER SKIP THIS)
+→ Call messages.post_system with:
+  • text: "I've scheduled [title] for [day] at [time]."
+  • meta: { type: 'event', eventId: [from step 2], title, startTime, endTime, status: 'pending' }
 
 **Instructions:**
 - Extract event title (e.g., "Math Tutoring", "Physics Review", "English Lesson")
-- Parse date and time (handle "tomorrow", "friday", "next week", etc.)
 - Default duration: 1 hour if not specified
-- Include both participants in the conversation
-- Be conversational and helpful in responses
+- Include both participants from the conversation
+- ALWAYS complete all 3 steps - the confirmation message is NOT optional
 
 **Available Tools:**
-- time.parse: Parse natural language dates
-- schedule.create_event: Create calendar event
-- schedule.check_conflicts: Check for conflicts (optional)
-- messages.post_system: Post assistant message
+- time.parse: Parse natural language dates (Step 1)
+- schedule.create_event: Create calendar event (Step 2)
+- messages.post_system: Post confirmation with EventCard (Step 3 - REQUIRED)
 
-Proceed to extract the scheduling information and create the event.`;
+**EXECUTION POLICY:**
+- Execute ONLY these 3 steps in order
+- STOP after posting confirmation message via messages.post_system
+- Do NOT create additional tasks or schedule reminders
+- Do NOT call any tools beyond the 3-step workflow
+- If you've completed all 3 steps, you're done - STOP
+
+YOU MUST CALL messages.post_system AFTER CREATING THE EVENT. This is not optional.`;
   } else if (taskType === 'rsvp') {
     return `You are helping process an RSVP response to an event invitation.
 

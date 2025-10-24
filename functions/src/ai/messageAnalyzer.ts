@@ -290,11 +290,18 @@ export async function processMessageWithAI(
     
     const originalTools = toolSchemas.getToolsForTaskType(gatingResult.task) ?? {};
 
-    // Convert tool names: dots to underscores (OpenAI requires ^[a-zA-Z0-9_-]+$)
+    // OpenAI requires tool names to match ^[a-zA-Z0-9_-]+$ (no dots allowed)
+    // Create bidirectional mapping: original <-> normalized
+    const toolNameMap = new Map<string, string>();
+    const reverseToolNameMap = new Map<string, string>();
     const tools: any = {};
-    for (const [key, value] of Object.entries(originalTools)) {
-      const normalizedKey = key.replace(/\./g, '_'); // "time.parse" → "time_parse"
-      tools[normalizedKey] = value;
+    
+    for (const [originalName, schema] of Object.entries(originalTools)) {
+      // Replace dots with underscores: "time.parse" → "time_parse"
+      const normalizedName = originalName.replace(/\./g, '_');
+      toolNameMap.set(originalName, normalizedName);
+      reverseToolNameMap.set(normalizedName, originalName);
+      tools[normalizedName] = schema;
     }
 
     logger.info('🔧 Calling GPT-4 with tools', {
@@ -302,6 +309,7 @@ export async function processMessageWithAI(
       task: gatingResult.task,
       toolCount: Object.keys(tools).length,
       toolNames: Object.keys(tools),
+      originalNames: Array.from(toolNameMap.keys()),
     });
 
     // Round 1: Initial tool call
@@ -328,18 +336,21 @@ export async function processMessageWithAI(
     
     if (round1Result.toolCalls && round1Result.toolCalls.length > 0) {
       for (const toolCall of round1Result.toolCalls) {
-        // Convert tool name back: underscores to dots
-        const originalToolName = toolCall.toolName.replace(/_/g, '.'); // "time_parse" → "time.parse"
+        // Convert normalized name back to original: "time_parse" → "time.parse"
+        const normalizedName = toolCall.toolName;
+        const originalToolName = reverseToolNameMap.get(normalizedName) || normalizedName;
         
         logger.info('🔧 Executing tool', {
           correlationId,
           tool: originalToolName,
+          normalized: normalizedName,
           args: JSON.stringify(toolCall.args).substring(0, 100),
         });
 
         const toolResult = await executeTool(
           originalToolName as any,
-          toolCall.args
+          toolCall.args,
+          { correlationId }
         );
         
         toolOutputs.push({
@@ -386,7 +397,7 @@ export async function processMessageWithAI(
         model: openai('gpt-4-turbo'),
         prompt: augmentedPrompt,
         tools: tools as any,
-        maxSteps: 1, // Single step for Round 2
+        maxSteps: 3, // Allow multi-step chaining: create_event → post_message
         temperature: 0.7,
       });
 
@@ -401,15 +412,17 @@ export async function processMessageWithAI(
       // Execute any additional tool calls from Round 2 (if any)
       if (round2Result.toolCalls && round2Result.toolCalls.length > 0) {
         for (const toolCall of round2Result.toolCalls) {
-          // Convert tool name back: underscores to dots
-          const originalToolName = toolCall.toolName.replace(/_/g, '.');
+          // Convert normalized name back to original: "schedule_create_event" → "schedule.create_event"
+          const normalizedName = toolCall.toolName;
+          const originalToolName = reverseToolNameMap.get(normalizedName) || normalizedName;
           
           logger.info('🔧 Executing Round 2 tool', {
             correlationId,
             tool: originalToolName,
+            normalized: normalizedName,
           });
 
-          await executeTool(originalToolName as any, toolCall.args);
+          await executeTool(originalToolName as any, toolCall.args, { correlationId });
         }
       }
     } else {
@@ -426,12 +439,20 @@ export async function processMessageWithAI(
       correlationId,
       totalDuration: t_totalEnd - t_llmStart,
     });
+
+    // Clean up write tracking for this execution
+    const { clearExecutionWrites } = await import('./toolExecutor');
+    clearExecutionWrites(correlationId);
   } catch (error: any) {
     logger.error('❌ AI processing failed', {
       correlationId,
       error: error.message,
       stack: error.stack,
     });
+    
+    // Clean up write tracking even on error
+    const { clearExecutionWrites } = await import('./toolExecutor');
+    clearExecutionWrites(correlationId);
     // Don't throw - allow message to be created even if AI processing fails
   }
 }

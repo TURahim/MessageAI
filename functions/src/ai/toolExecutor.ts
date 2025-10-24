@@ -37,23 +37,87 @@ const MAX_RETRIES = 3;
 const RETRY_DELAYS = [1000, 2000, 4000]; // ms
 
 /**
+ * Write-Once Guard: Track writes per execution to prevent duplicates
+ * Key: correlationId, Value: Set of write categories that have been executed
+ */
+const executionWrites = new Map<string, Set<string>>();
+
+/**
+ * Get write category for a tool to enforce one-write-per-category rule
+ */
+function getWriteCategory(toolName: string): string {
+  if (toolName.includes('create_event')) return 'event_write';
+  if (toolName.includes('task.create')) return 'task_write';
+  if (toolName.includes('messages.post_system')) return 'message_write';
+  return 'other';
+}
+
+/**
+ * Check if a write tool can be executed (write-once guard)
+ * Returns false if this write category was already executed in this correlation
+ */
+function canExecuteWrite(correlationId: string | undefined, toolName: string): boolean {
+  if (!correlationId) return true; // No tracking if no correlationId
+  
+  const writeCategory = getWriteCategory(toolName);
+  if (writeCategory === 'other') return true; // Not a write tool
+  
+  if (!executionWrites.has(correlationId)) {
+    executionWrites.set(correlationId, new Set());
+  }
+  
+  const writes = executionWrites.get(correlationId)!;
+  
+  if (writes.has(writeCategory)) {
+    logger.warn('🚫 Write already executed this round', {
+      correlationId,
+      toolName,
+      category: writeCategory,
+    });
+    return false;
+  }
+  
+  writes.add(writeCategory);
+  return true;
+}
+
+/**
+ * Clean up write tracking for a completed execution
+ */
+export function clearExecutionWrites(correlationId: string) {
+  executionWrites.delete(correlationId);
+}
+
+/**
  * Executes a tool with retry logic and error handling
  * 
  * @param toolName - Name of the tool to execute
  * @param params - Tool parameters
+ * @param context - Optional execution context (correlationId for write-once guard)
  * @returns ToolExecutionResult with success/data/error
  * 
  * @example
  * const result = await executeTool('time.parse', {
  *   text: 'tomorrow at 3pm',
  *   timezone: 'America/New_York'
- * });
+ * }, { correlationId: '12345' });
  */
 export async function executeTool(
   toolName: ToolName,
-  params: any
+  params: any,
+  context?: { correlationId?: string }
 ): Promise<ToolExecutionResult> {
   const startTime = Date.now();
+
+  // Write-once guard: Check if this write was already executed
+  if (!canExecuteWrite(context?.correlationId, toolName)) {
+    return {
+      success: true,
+      data: { success: true, wasDeduped: true },
+      attempts: 0,
+      executionTime: Date.now() - startTime,
+    };
+  }
 
   // CRITICAL: Validate timezone for time/schedule tools
   if (TIMEZONE_REQUIRED_TOOLS.includes(toolName)) {
@@ -264,18 +328,57 @@ async function handleScheduleCreateEvent(params: ScheduleCreateEventInput): Prom
   });
 
   try {
-    // PR10: Check for conflicts BEFORE creating event
-    const { handleEventConflict } = await import('./conflictHandler');
-    
+    // Fetch ALL participants from the conversation
+    // This ensures both users see the event, not just the sender
+    const convDoc = await admin.firestore().doc(`conversations/${conversationId}`).get();
+    const conversationData = convDoc.data();
+    const allParticipants = conversationData?.participants || participants;
+
+    logger.info('📋 Participants fetched from conversation', {
+      provided: participants.length,
+      actual: allParticipants.length,
+      participantIds: allParticipants,
+    });
+
     const startDate = new Date(startTime);
     const endDate = new Date(endTime);
+
+    // Idempotency: Check if event already exists
+    const normalizedTitle = title.toLowerCase().trim();
+    const dateKey = startDate.toISOString().split('T')[0]; // YYYY-MM-DD
+    const idempotencyKey = `${conversationId}_${normalizedTitle}_${dateKey}`;
+
+    // Query by idempotencyKey only (no index required since it's a single equality filter)
+    const existingEvent = await admin.firestore()
+      .collection('events')
+      .where('idempotencyKey', '==', idempotencyKey)
+      .limit(1)
+      .get();
+
+    if (!existingEvent.empty) {
+      const existingEventId = existingEvent.docs[0].id;
+      logger.info('✅ Event already exists (idempotent)', {
+        eventId: existingEventId,
+        idempotencyKey,
+      });
+      
+      return {
+        success: true,
+        eventId: existingEventId,
+        hasConflict: false,
+        wasDeduped: true,
+      };
+    }
+
+    // PR10: Check for conflicts BEFORE creating event
+    const { handleEventConflict } = await import('./conflictHandler');
     
     const conflictResult = await handleEventConflict(
       {
         title,
         startTime: startDate,
         endTime: endDate,
-        participants,
+        participants: allParticipants,
         createdBy,
       },
       conversationId,
@@ -288,12 +391,13 @@ async function handleScheduleCreateEvent(params: ScheduleCreateEventInput): Prom
       title,
       startTime: admin.firestore.Timestamp.fromDate(startDate),
       endTime: admin.firestore.Timestamp.fromDate(endDate),
-      participants,
+      participants: allParticipants,
       status: conflictResult.hasConflict ? 'pending' : 'pending', // Could use 'conflict' status
       conversationId,
       createdBy,
       rsvps: {},
       hasConflict: conflictResult.hasConflict || false, // Flag for UI
+      idempotencyKey, // ADD IDEMPOTENCY KEY
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
@@ -303,6 +407,66 @@ async function handleScheduleCreateEvent(params: ScheduleCreateEventInput): Prom
       title,
       hasConflict: conflictResult.hasConflict,
     });
+
+    // Smart fallback: Wait a moment for GPT-4 to post confirmation, then check if it did
+    // This ensures we always have a confirmation without creating duplicates
+    setTimeout(async () => {
+      try {
+        // Check if a confirmation message was already posted with this eventId
+        const recentMessages = await admin.firestore()
+          .collection('conversations')
+          .doc(conversationId)
+          .collection('messages')
+          .where('senderId', '==', 'assistant')
+          .where('meta.eventId', '==', eventRef.id)
+          .limit(1)
+          .get();
+        
+        if (recentMessages.empty) {
+          // No confirmation found, post fallback message
+          logger.warn('⚠️ GPT-4 did not post confirmation, using fallback', {
+            eventId: eventRef.id,
+          });
+
+          const localDate = new Date(startDate.getTime());
+          const dateStr = localDate.toLocaleDateString('en-US', {
+            weekday: 'short',
+            month: 'short',
+            day: 'numeric',
+            timeZone: timezone,
+          });
+          const timeStr = localDate.toLocaleTimeString('en-US', {
+            hour: 'numeric',
+            minute: '2-digit',
+            timeZone: timezone,
+          });
+
+          const confirmationText = `I've scheduled ${title} for ${dateStr} at ${timeStr}.`;
+
+          await handleMessagesPostSystem({
+            conversationId,
+            text: confirmationText,
+            meta: {
+              type: 'event',
+              eventId: eventRef.id,
+              title,
+              startTime: startDate.toISOString(),
+              endTime: endDate.toISOString(),
+              status: 'pending',
+            },
+          });
+        } else {
+          logger.info('✅ Confirmation already posted by GPT-4', {
+            eventId: eventRef.id,
+          });
+        }
+      } catch (fallbackError: any) {
+        logger.error('❌ Fallback confirmation failed', {
+          error: fallbackError.message,
+          eventId: eventRef.id,
+        });
+      }
+    }, 2000); // Wait 2 seconds for GPT-4 to finish
 
     return {
       success: true,
@@ -439,7 +603,7 @@ async function handleRSVPCreateInvite(params: RSVPCreateInviteInput): Promise<RS
 }
 
 async function handleRSVPRecordResponse(params: RSVPRecordResponseInput): Promise<RSVPRecordResponseOutput> {
-  const { eventId, userId, response } = params;
+  const { eventId, userId, response, conversationId } = params;
 
   logger.info('✓ rsvp.record_response called', {
     eventId: eventId.substring(0, 8),
@@ -448,9 +612,52 @@ async function handleRSVPRecordResponse(params: RSVPRecordResponseInput): Promis
   });
 
   try {
-    // Update event with RSVP response
-    const eventRef = admin.firestore().collection('events').doc(eventId);
+    // Try to find the event - first by ID, then by searching recent events in conversation
+    let eventRef = admin.firestore().collection('events').doc(eventId);
+    let eventDoc = await eventRef.get();
     
+    // If event doesn't exist, try to find it by searching recent events in this conversation
+    if (!eventDoc.exists) {
+      logger.warn('⚠️ Event ID not found, searching by conversation', {
+        providedEventId: eventId,
+        conversationId: conversationId?.substring(0, 12),
+      });
+
+      // Find recent events in this conversation (last 7 days)
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      const eventsQuery = await admin.firestore()
+        .collection('events')
+        .where('conversationId', '==', conversationId)
+        .where('startTime', '>=', admin.firestore.Timestamp.fromDate(sevenDaysAgo))
+        .orderBy('startTime', 'desc')
+        .limit(10)
+        .get();
+
+      if (!eventsQuery.empty) {
+        // Use the most recent upcoming event (best guess)
+        const now = new Date();
+        const upcomingEvent = eventsQuery.docs.find(doc => doc.data().startTime.toDate() > now);
+        
+        if (upcomingEvent) {
+          eventRef = upcomingEvent.ref;
+          eventDoc = upcomingEvent;
+          logger.info('✅ Found matching event by conversation lookup', {
+            actualEventId: eventRef.id,
+            title: upcomingEvent.data().title,
+          });
+        } else {
+          // No upcoming events, use the most recent one
+          eventRef = eventsQuery.docs[0].ref;
+          eventDoc = eventsQuery.docs[0];
+          logger.info('✅ Using most recent event (no upcoming found)', {
+            actualEventId: eventRef.id,
+            title: eventsQuery.docs[0].data().title,
+          });
+        }
+      }
+    }
+
+    // Update event with RSVP response
     await eventRef.update({
       [`rsvps.${userId}`]: {
         response,
@@ -460,7 +667,7 @@ async function handleRSVPRecordResponse(params: RSVPRecordResponseInput): Promis
     });
 
     // Determine new event status based on responses
-    const eventDoc = await eventRef.get();
+    eventDoc = await eventRef.get();
     const eventData = eventDoc.data();
     const rsvps = eventData?.rsvps || {};
     
@@ -509,6 +716,32 @@ async function handleTaskCreate(params: TaskCreateInput): Promise<TaskCreateOutp
   });
 
   try {
+    // Idempotency: Check if task already exists
+    const normalizedTitle = title.toLowerCase().trim();
+    const dueDateStr = dueDate ? new Date(dueDate).toISOString().split('T')[0] : 'no-due-date';
+    const idempotencyKey = `${conversationId}_${normalizedTitle}_${dueDateStr}`;
+
+    // Query by idempotencyKey only (no index required since it's a single equality filter)
+    const existingTask = await admin.firestore()
+      .collection('deadlines')
+      .where('idempotencyKey', '==', idempotencyKey)
+      .limit(1)
+      .get();
+
+    if (!existingTask.empty) {
+      const existingTaskId = existingTask.docs[0].id;
+      logger.info('✅ Task already exists (idempotent)', {
+        taskId: existingTaskId,
+        idempotencyKey,
+      });
+      
+      return {
+        success: true,
+        taskId: existingTaskId,
+        wasDeduped: true,
+      };
+    }
+
     // Get assignee name for display
     const assigneeDoc = await admin.firestore().doc(`users/${assignee}`).get();
     const assigneeName = assigneeDoc.data()?.displayName || 'Unknown';
@@ -522,6 +755,7 @@ async function handleTaskCreate(params: TaskCreateInput): Promise<TaskCreateOutp
       conversationId,
       completed: false,
       createdBy,
+      idempotencyKey, // ADD IDEMPOTENCY KEY
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
@@ -719,6 +953,71 @@ function formatDate(date: Date): string {
 async function handleMessagesPostSystem(params: MessagesPostSystemInput): Promise<MessagesPostSystemOutput> {
   // Implement immediately - this is ready to use
   try {
+    // Remove loading message if it exists
+    // Use simple query to avoid index requirements
+    try {
+      // Get recent assistant messages and filter for loading type
+      const recentMessages = await admin.firestore()
+        .collection('conversations')
+        .doc(params.conversationId)
+        .collection('messages')
+        .where('senderId', '==', 'assistant')
+        .orderBy('serverTimestamp', 'desc')
+        .limit(10) // Check last 10 assistant messages
+        .get();
+      
+      const loadingMessages = recentMessages.docs.filter(
+        doc => doc.data().meta?.type === 'ai_loading'
+      );
+      
+      if (loadingMessages.length > 0) {
+        const deletePromises = loadingMessages.map(doc => doc.ref.delete());
+        await Promise.all(deletePromises);
+        logger.info('🗑️ Removed loading message(s)', {
+          count: loadingMessages.length,
+          conversationId: params.conversationId.substring(0, 12),
+        });
+      } else {
+        logger.info('ℹ️ No loading messages found to remove', {
+          conversationId: params.conversationId.substring(0, 12),
+        });
+      }
+    } catch (cleanupError: any) {
+      logger.warn('⚠️ Could not clean up loading message', {
+        error: cleanupError.message,
+        conversationId: params.conversationId.substring(0, 12),
+      });
+      // Continue with posting message even if cleanup fails
+    }
+
+    // Message Deduplication: Check if confirmation already exists for this entity
+    if (params.meta?.eventId || params.meta?.deadlineId) {
+      const entityId = params.meta.eventId || params.meta.deadlineId;
+      const entityField = params.meta.eventId ? 'meta.eventId' : 'meta.deadlineId';
+      
+      const existingConfirmation = await admin.firestore()
+        .collection('conversations')
+        .doc(params.conversationId)
+        .collection('messages')
+        .where('senderId', '==', 'assistant')
+        .where(entityField, '==', entityId)
+        .limit(1)
+        .get();
+      
+      if (!existingConfirmation.empty) {
+        logger.info('✅ Confirmation already exists (deduped)', { 
+          entityId,
+          messageId: existingConfirmation.docs[0].id,
+        });
+        
+        return {
+          success: true,
+          messageId: existingConfirmation.docs[0].id,
+          wasDeduped: true,
+        };
+      }
+    }
+
     const messageRef = await admin.firestore()
       .collection('conversations')
       .doc(params.conversationId)

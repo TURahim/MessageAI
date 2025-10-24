@@ -39,12 +39,14 @@ export interface ConflictMeta {
 
 export interface MessageMeta {
   role?: 'assistant' | 'system' | 'user';
+  type?: 'event' | 'deadline' | 'ai_loading'; // Type of assistant message/card
   eventId?: string;
   event?: EventMeta;
   deadlineId?: string;
   deadline?: DeadlineMeta;
   rsvp?: RSVPMeta;
   conflict?: ConflictMeta;
+  triggerTask?: string; // Track what task triggered loading (scheduling, rsvp, reminder)
 }
 
 export interface Message {
