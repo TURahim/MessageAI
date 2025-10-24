@@ -960,20 +960,20 @@ async function handleMessagesPostSystem(params: MessagesPostSystemInput): Promis
   // Implement immediately - this is ready to use
   try {
     // Remove loading message if it exists
-    // Use simple query to avoid index requirements
+    // Use simple query with NO composite index requirement
     try {
-      // Get recent assistant messages and filter for loading type
+      // Get all recent messages (no where clause = no index needed)
       const recentMessages = await admin.firestore()
         .collection('conversations')
         .doc(params.conversationId)
         .collection('messages')
-        .where('senderId', '==', 'assistant')
         .orderBy('serverTimestamp', 'desc')
-        .limit(10) // Check last 10 assistant messages
+        .limit(20) // Check last 20 messages (broader net)
         .get();
       
+      // Filter client-side for loading messages from assistant
       const loadingMessages = recentMessages.docs.filter(
-        doc => doc.data().meta?.type === 'ai_loading'
+        doc => doc.data().senderId === 'assistant' && doc.data().meta?.type === 'ai_loading'
       );
       
       if (loadingMessages.length > 0) {
