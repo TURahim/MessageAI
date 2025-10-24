@@ -42,13 +42,31 @@ export default function EventDetailsSheet({ visible, event, onClose }: EventDeta
   // TODO: Replace these with real backend calls
   // See JellyDMTasklist.md PR6.3 for replacement code
   const handleMessageGroup = () => {
-    Alert.alert('Message Group', 'This will open the group chat (mock action)');
-    onClose();
+    // Wire to real navigation
+    if (event.conversationId) {
+      const { router } = require('expo-router');
+      router.push(`/chat/${event.conversationId}`);
+      onClose();
+    } else {
+      Alert.alert('No Conversation', 'This event is not linked to a conversation yet');
+    }
   };
 
-  const handleReschedule = () => {
+  const handleReschedule = async () => {
+    // TODO: Wire when rescheduleEvent CF is deployed
     Alert.alert('Reschedule', 'Reschedule functionality coming soon with AI');
     onClose();
+    
+    /* REAL IMPLEMENTATION:
+    const { rescheduleEvent } = await import('@/services/ai/aiOrchestratorService');
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const result = await rescheduleEvent(event.id, timezone);
+    
+    if (result.success && result.alternatives) {
+      // Show alternatives in modal or navigate to selection screen
+      onClose();
+    }
+    */
   };
 
   const handleCancel = () => {
@@ -57,9 +75,15 @@ export default function EventDetailsSheet({ visible, event, onClose }: EventDeta
       'Are you sure you want to cancel this session?',
       [
         { text: 'No', style: 'cancel' },
-        { text: 'Yes, Cancel', style: 'destructive', onPress: () => {
-          Alert.alert('Cancelled', 'Session cancelled (mock action)');
-          onClose();
+        { text: 'Yes, Cancel', style: 'destructive', onPress: async () => {
+          try {
+            const { deleteEvent } = await import('@/services/schedule/eventService');
+            await deleteEvent(event.id);
+            Alert.alert('Cancelled', 'Session cancelled successfully');
+            onClose();
+          } catch (error: any) {
+            Alert.alert('Error', error.message);
+          }
         }},
       ]
     );

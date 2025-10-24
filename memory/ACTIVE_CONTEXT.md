@@ -8,11 +8,11 @@
 > 
 > These guides provide instant context for any development task.
 
-## Current Milestone: JellyDM UI Transformation Complete ✅ - Phase 8 (PRs 01-05)
-MessageAI MVP complete. Now transformed to JellyDM - tutor-focused messaging platform with AI-powered scheduling.
-All 5 PR UI scaffolding complete: 5-tab navigation, AI-aware chat, Schedule tab, Tasks tab, Assistant dashboard.
-~3,263 lines of new UI code. Ready for AI orchestrator integration.
-Latest work: PR-01 through PR-05 (Oct 23, 2025)
+## Current Milestone: JellyDM Backend Integration 40% Complete ✅ - Phase 9 (PRs 1-6)
+MessageAI MVP + JellyDM UI complete. Backend infrastructure in progress.
+Completed: AI gating, RAG pipeline, function calling, date parser, event backend, Schedule UI wiring (PRs 1-6 of 15).
+Schedule tab now connected to Firestore. RSVP handlers functional. Event CRUD working.
+Latest work: Backend PRs 1-6 (Oct 24, 2025)
 
 ## What's Working (Phase 1-8 Complete)
 - ✅ Expo Router file-based routing (nested app/app/ structure)
@@ -307,7 +307,7 @@ import { addFriend } from '@/services/friendService';
 - Updated Firestore rules for pushToken field updates
 - Comprehensive setup guide: PUSH-NOTIFICATIONS-SETUP.md
 
-### Phase 8: JellyDM UI Transformation (Latest - Oct 23, 2025)
+### Phase 8: JellyDM UI Transformation (Oct 23, 2025)
 - Transformed MessageAI into tutor-focused messaging platform
 - **PR-01:** 5-tab navigation (Chats/Schedule/Tasks/Assistant/Profile)
   - TabIcon component with Ionicons
@@ -342,4 +342,47 @@ import { addFriend } from '@/services/friendService';
 - **Total:** 33 new components/hooks, ~3,263 lines of code
 - **Status:** All UI complete, ready for AI orchestrator
 - **Documentation:** JellyDM_UI.md - Complete mock tracking guide
+
+### Phase 9: JellyDM Backend Implementation (Latest - Oct 24, 2025)
+- Implemented backend infrastructure for AI-powered scheduling
+- **PR1:** AI Infrastructure (COMPLETE ✅)
+  - Gating classifier with GPT-3.5/Claude Haiku (<500ms P95 latency)
+  - Timezone architecture with DST validation (throws on missing timezone)
+  - timezoneUtils with strict enforcement
+  - onMessageCreated trigger for AI analysis
+  - Eval harness with 42 test cases, CI integration
+  - promptTemplates for all AI operations
+- **PR2:** RAG Pipeline (COMPLETE ✅)
+  - VectorRetriever interface (Firebase, Pinecone stub, Mock)
+  - Embedding service (OpenAI text-embedding-3-small, 1536 dims)
+  - Context builder with recency reranking (7-day boost)
+  - PII minimization, generateMessageEmbedding CF
+  - Env-based retriever swapping (VECTOR_STORE=mock)
+- **PR3:** Function Calling Framework (COMPLETE ✅)
+  - 8 tool schemas with Zod validation
+  - Tool executor with retry logic (1s, 2s, 4s)
+  - Timezone validation at tool boundary
+  - Failed operations logging
+  - Admin viewer (HTTP endpoint with auth + PII redaction)
+  - Message meta mapper (tool outputs → MessageMeta)
+- **PR4:** LLM Date Parser (COMPLETE ✅)
+  - time.parse tool with GPT-4-turbo structured output
+  - Timezone-aware date extraction (ISO8601 UTC)
+  - Confidence scoring, duration extraction
+  - 11 test cases for common phrases
+- **PR5:** Event Backend (COMPLETE ✅)
+  - /events Firestore collection with indexes
+  - eventService with CRUD operations
+  - Transactional conflict checking
+  - Security rules (participants read, creator update/delete)
+  - schedule.create_event tool handler
+  - Emulator tests (12+ test cases)
+- **PR6:** Wire Schedule UI (COMPLETE ✅)
+  - useEvents hook → Firestore real-time listener
+  - EventDetailsSheet → delete/navigate actions working
+  - RSVP handlers → recordRSVP() wired
+  - aiOrchestratorService wrapper created
+  - Navigation wired (event→schedule, deadline→tasks)
+- **Status:** 6 of 15 backend PRs complete (40%)
+- **Next:** PR7-8 (RSVP system), PR9-10 (Urgency + Conflicts), PR11 (Tasks wiring)
 

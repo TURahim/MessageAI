@@ -8,41 +8,56 @@
 >
 > **These provide instant context for continuing work.**
 
-## Current Status: JellyDM UI COMPLETE ✅ - Ready for AI Integration
+## Current Status: JellyDM Backend 40% Complete 🔄 - Schedule Wired
 
-All UI scaffolding complete (PRs 01-05). 5-tab layout with Schedule, Tasks, and AI Assistant features.
-Mock data in place. Ready to wire to AI orchestrator and backend.
+UI complete (PRs 01-05). Backend infrastructure 6/15 PRs done (PRs 1-6).
+Schedule tab now connected to Firestore. Event CRUD working. AI gating ready.
+Next: RSVP system, urgency detection, tasks wiring.
 
 ---
 
-## 🎯 Immediate Tasks (AI Integration)
+## 🎯 Immediate Tasks (Backend PRs 7-15)
 
-### High Priority - Backend Setup
-- [ ] **Create Firestore Collections**
-  - /events collection with indexes
-  - /deadlines collection with indexes
-  - Update security rules
-  - Deploy to Firebase
+### High Priority - RSVP System (PRs 7-8)
+- [ ] **PR7:** RSVP Backend Service
+  - Implement rsvpService with createInvite, recordResponse
+  - Wire rsvp.create_invite and rsvp.record_response tools
+  - Test RSVP flow end-to-end
   
-- [ ] **Wire Mock Data to Firestore**
-  - Replace useEvents hook with real queries
+- [ ] **PR8:** NL Response Interpretation
+  - Build classifier for "yes"/"no"/"maybe" responses
+  - Auto-record when confidence >0.7
+  - Detect ambiguity words, prompt clarification
+  
+### High Priority - Priority & Conflicts (PRs 9-10)
+- [ ] **PR9:** Urgency Detection
+  - Build urgency classifier (keyword + LLM)
+  - Send push notifications for urgent messages
+  - Log false positives (≥90% precision target)
+  
+- [ ] **PR10:** Conflict Engine
+  - Implement conflict detection service
+  - Generate AI alternative suggestions
+  - Post conflict warnings in chat
+
+### High Priority - Tasks Wiring (PR11)
+- [x] **Create /events Collection** ✅ DONE (PR5)
+  - Schema defined, indexes deployed
+  - Security rules written
+  
+- [ ] **Wire Tasks Backend**
+  - Create /deadlines collection
   - Replace useDeadlines hook with real queries
-  - Test real-time updates
-  - Verify data persistence
-
-### High Priority - AI Orchestrator
-- [ ] **Set Up AI Endpoints**
-  - /api/ai/parse-lesson - Extract events from text
-  - /api/ai/summarize-week - Generate summaries
-  - /api/ai/suggest-times - Find available slots
-  - /api/ai/detect-conflicts - Check overlaps
-  - /api/ai/extract-deadline - Parse deadlines
+  - Implement taskService CRUD
+  - Build AI deadline extractor
   
-- [ ] **Wire UI to AI**
-  - AddLessonModal → AI parse endpoint
-  - AIQuickActions → Real AI calls
-  - EventDetailsSheet → Real actions
-  - AssistantActionRow → Real handlers
+### Completed (PRs 1-6) ✅
+- [x] **AI Infrastructure** - Gating, timezone, eval harness
+- [x] **RAG Pipeline** - Vector store, embeddings, context builder
+- [x] **Function Calling** - 8 tools, retry logic, admin viewer
+- [x] **Date Parser** - time.parse tool with GPT-4
+- [x] **Event Backend** - Firestore collection, CRUD, security
+- [x] **Wire Schedule UI** - useEvents → Firestore, RSVP handlers
   
 ### Medium Priority - Enhancement
 - [ ] **Install DateTimePicker**

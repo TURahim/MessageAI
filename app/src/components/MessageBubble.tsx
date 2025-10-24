@@ -151,31 +151,92 @@ export default function MessageBubble({
   // See JellyDMTasklist.md PR6.4, PR6.5 for replacement code
   // Handle inline card actions (mock for now)
   const handleEventPress = () => {
-    // MOCK: handleEventPress
-    Alert.alert('Event Details', 'Event details will open here once AI orchestrator is connected.');
+    // MOCK: handleEventPress - Navigate to Schedule tab or open event details
+    if (message.meta?.event?.eventId) {
+      // Option 1: Navigate to Schedule tab (simple)
+      const { router } = require('expo-router');
+      router.push('/schedule'); // Could add ?eventId= param later
+      
+      // Option 2: Open EventDetailsSheet (would need state management)
+      // For now, just navigate to Schedule tab
+    } else {
+      Alert.alert('Event Details', 'Event details will open here once AI orchestrator is connected.');
+    }
   };
 
   const handleDeadlinePress = () => {
-    Alert.alert('Deadline Details', 'Deadline details will open here once AI orchestrator is connected.');
+    // Navigate to Tasks tab to see deadline
+    if (message.meta?.deadline?.deadlineId) {
+      const { router } = require('expo-router');
+      router.push('/tasks');
+    } else {
+      Alert.alert('Deadline Details', 'Deadline details will open here once AI orchestrator is connected.');
+    }
   };
 
   const handleMarkDone = () => {
+    // TODO: Wire to taskService when implemented (PR11)
     Alert.alert('Mark Done', 'Deadline marked as done (mock action)');
   };
 
   // BEGIN MOCK_RSVP_HANDLERS
-  const handleRSVPAccept = () => {
-    Alert.alert('RSVP', 'You accepted the invite (mock action)');
+  const handleRSVPAccept = async () => {
+    if (!message.meta?.rsvp?.eventId) return;
+    
+    try {
+      const { recordRSVP } = await import('@/services/schedule/eventService');
+      const { auth } = await import('@/lib/firebase');
+      const currentUserId = auth.currentUser?.uid || '';
+      
+      await recordRSVP(message.meta.rsvp.eventId, currentUserId, 'accepted');
+      Alert.alert('RSVP', 'You accepted the invite!');
+    } catch (error: any) {
+      Alert.alert('Error', error.message);
+    }
   };
 
-  const handleRSVPDecline = () => {
-    Alert.alert('RSVP', 'You declined the invite (mock action)');
+  const handleRSVPDecline = async () => {
+    if (!message.meta?.rsvp?.eventId) return;
+    
+    try {
+      const { recordRSVP } = await import('@/services/schedule/eventService');
+      const { auth } = await import('@/lib/firebase');
+      const currentUserId = auth.currentUser?.uid || '';
+      
+      await recordRSVP(message.meta.rsvp.eventId, currentUserId, 'declined');
+      Alert.alert('RSVP', 'You declined the invite.');
+    } catch (error: any) {
+      Alert.alert('Error', error.message);
+    }
   };
   // END MOCK_RSVP_HANDLERS
 
-  const handleConflictSelect = (index: number) => {
-    // MOCK: handleConflictSelect
-    Alert.alert('Alternative Selected', `You selected alternative #${index + 1} (mock action)`);
+  const handleConflictSelect = async (index: number) => {
+    // MOCK: handleConflictSelect - Wire to conflictService (PR10)
+    Alert.alert('Alternative Selected', `You selected alternative #${index + 1}\n\nThis will be wired to create a new event with the selected time in PR10.`);
+    
+    /* REAL IMPLEMENTATION (PR10):
+    if (!message.meta?.conflict?.suggestedAlternatives) return;
+    
+    const alternative = message.meta.conflict.suggestedAlternatives[index];
+    if (!alternative) return;
+    
+    try {
+      const { selectAlternative } = await import('@/services/schedule/conflictService');
+      const { auth } = await import('@/lib/firebase');
+      
+      const newEventId = await selectAlternative(
+        message.meta.conflict.conflictId,
+        index,
+        'original-event-id', // Would come from conflict meta
+        auth.currentUser?.uid || ''
+      );
+      
+      Alert.alert('Rescheduled', `Event rescheduled to ${alternative.startTime}`);
+    } catch (error: any) {
+      Alert.alert('Error', error.message);
+    }
+    */
   };
   // END MOCK_CARD_HANDLERS
 

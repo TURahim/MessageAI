@@ -2,6 +2,7 @@ import { initializeApp, getApps } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
+import { getFunctions } from "firebase/functions";
 import { firebaseConfig } from "@/lib/firebaseConfig";
 
 // Initialize Firebase app (only if not already initialized)
@@ -28,6 +29,9 @@ console.log('✅ Firestore initialized with automatic offline persistence');
 console.log('📦 Offline features: Document cache, queued writes, offline queries');
 
 export const storage = getStorage(app);
+
+// Initialize Cloud Functions for AI orchestrator (PR6)
+export const functions = getFunctions(app);
 
 // Export app instance for tests
 export { app };

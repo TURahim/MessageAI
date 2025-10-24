@@ -171,25 +171,130 @@ async function executeToolHandler(toolName: ToolName, params: any): Promise<any>
  */
 
 async function handleTimeParse(params: TimeParseInput): Promise<TimeParseOutput> {
-  // TODO (PR4): Implement with LLM date parsing
-  // For now, placeholder
-  logger.info('⏰ time.parse called (TODO: implement in PR4)', params);
-  
-  return {
-    success: false,
-    confidence: 0,
-    error: 'NOT_IMPLEMENTED: time.parse will be implemented in PR4',
-  };
+  const { text, timezone, referenceDate } = params;
+
+  logger.info('⏰ time.parse called', {
+    text: text.substring(0, 50),
+    timezone,
+  });
+
+  try {
+    // Import AI SDK and date utilities
+    const { generateObject } = await import('ai');
+    const { openai } = await import('@ai-sdk/openai');
+    const { z } = await import('zod');
+    const { format } = await import('date-fns');
+
+    // Build context for LLM
+    const now = referenceDate ? new Date(referenceDate) : new Date();
+    const nowInTimezone = format(now, 'PPPP'); // e.g., "Monday, January 15th, 2024"
+    
+    const enhancedPrompt = `Today is ${nowInTimezone}. The timezone is ${timezone}.
+
+Extract the date and time from this message. Calculate relative dates (tomorrow, Friday, next week) based on today's date.
+
+Message: "${text}"
+
+Return the parsed date/time information.`;
+
+    // Use structured output for reliable JSON parsing
+    const result = await generateObject({
+      model: openai('gpt-4-turbo'),
+      schema: z.object({
+        found: z.boolean().describe('Whether a date/time was found in the message'),
+        dateTime: z.string().optional().describe('ISO8601 date/time in UTC if found'),
+        duration: z.number().optional().describe('Duration in minutes if mentioned'),
+        confidence: z.number().min(0).max(1).describe('Confidence score 0-1'),
+        explanation: z.string().optional().describe('Brief explanation of the parsing'),
+      }),
+      prompt: enhancedPrompt,
+      temperature: 0.3, // Deterministic
+      maxTokens: 150,
+    });
+
+    const parsed = result.object;
+
+    if (!parsed.found || !parsed.dateTime) {
+      return {
+        success: false,
+        confidence: parsed.confidence,
+        error: 'NO_DATE_FOUND: Could not extract date/time from message',
+      };
+    }
+
+    // Validate the parsed date is in UTC ISO8601 format
+    const parsedDate = new Date(parsed.dateTime);
+    if (isNaN(parsedDate.getTime())) {
+      return {
+        success: false,
+        confidence: parsed.confidence,
+        error: 'INVALID_DATE: LLM returned invalid ISO8601 date',
+      };
+    }
+
+    logger.info('✅ time.parse successful', {
+      text: text.substring(0, 30),
+      dateTime: parsed.dateTime,
+      confidence: parsed.confidence,
+      explanation: parsed.explanation,
+    });
+
+    return {
+      success: true,
+      dateTime: parsed.dateTime,
+      confidence: parsed.confidence,
+    };
+  } catch (error: any) {
+    logger.error('❌ time.parse failed', {
+      text: text.substring(0, 50),
+      error: error.message,
+    });
+
+    throw new Error(`TIME_PARSE_FAILED: ${error.message}`);
+  }
 }
 
 async function handleScheduleCreateEvent(params: ScheduleCreateEventInput): Promise<ScheduleCreateEventOutput> {
-  // TODO (PR5): Implement with eventService
-  logger.info('📅 schedule.create_event called (TODO: implement in PR5)', params);
-  
-  return {
-    success: false,
-    error: 'NOT_IMPLEMENTED: schedule.create_event will be implemented in PR5',
-  };
+  const { title, startTime, endTime, timezone, participants, conversationId, createdBy } = params;
+
+  logger.info('📅 schedule.create_event called', {
+    title,
+    participants: participants.length,
+    timezone,
+  });
+
+  try {
+    // Create event in Firestore
+    const eventRef = await admin.firestore().collection('events').add({
+      title,
+      startTime: admin.firestore.Timestamp.fromDate(new Date(startTime)),
+      endTime: admin.firestore.Timestamp.fromDate(new Date(endTime)),
+      participants,
+      status: 'pending',
+      conversationId,
+      createdBy,
+      rsvps: {},
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    logger.info('✅ Event created in Firestore', {
+      eventId: eventRef.id,
+      title,
+    });
+
+    return {
+      success: true,
+      eventId: eventRef.id,
+    };
+  } catch (error: any) {
+    logger.error('❌ Event creation failed', {
+      error: error.message,
+      title,
+    });
+
+    throw new Error(`SCHEDULE_CREATE_FAILED: ${error.message}`);
+  }
 }
 
 async function handleScheduleCheckConflicts(params: ScheduleCheckConflictsInput): Promise<ScheduleCheckConflictsOutput> {

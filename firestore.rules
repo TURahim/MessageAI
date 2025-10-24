@@ -66,5 +66,26 @@ service cloud.firestore {
     match /vector_messages/{msgId} {
       allow read, write: if false; // Only Cloud Functions via admin SDK
     }
+
+    // --- EVENTS COLLECTION (PR5) ---
+    // Calendar events for tutoring sessions
+    match /events/{eventId} {
+      // Rule 1: Participants can read their events
+      allow read: if request.auth != null && 
+        request.auth.uid in resource.data.participants;
+      
+      // Rule 2: Authenticated users can create events if they're in participants
+      allow create: if request.auth != null &&
+        request.auth.uid in request.resource.data.participants &&
+        request.auth.uid == request.resource.data.createdBy;
+      
+      // Rule 3: Only creator can update event
+      allow update: if request.auth != null &&
+        request.auth.uid == resource.data.createdBy;
+      
+      // Rule 4: Only creator can delete event
+      allow delete: if request.auth != null &&
+        request.auth.uid == resource.data.createdBy;
+    }
   }
 }

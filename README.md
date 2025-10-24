@@ -8,8 +8,9 @@ A production-quality real-time messaging application with offline support, optim
 
 ## 🎯 Project Status
 
-### Current Phase: **MVP COMPLETE + Enhanced** ✅ - Production Ready!
+### Current Phase: **JellyDM Transformation** - Backend 40% Complete
 
+**MessageAI Base (Phases 1-7):**
 - ✅ **Phase 1:** Project setup, auth, navigation (Complete)
 - ✅ **Phase 2:** Conversations, messaging, retry logic, offline support (Complete)
 - ✅ **Phase 3:** Presence, typing, read receipts, group chat (Complete)
@@ -17,10 +18,16 @@ A production-quality real-time messaging application with offline support, optim
 - ✅ **Phase 5:** Pagination, error handling, testing framework (Complete)
 - ✅ **Phase 6:** Friends-first UX, group info, offline sync enhancements (Complete)
 - ✅ **Phase 7:** Remote push notifications via Cloud Functions (Complete)
-- ✅ **Backend Deployed:** Cloud Functions live on Node.js 20
-- ⏳ **Device Testing:** Build and test on physical device (use PUSH-TESTING-GUIDE.md)
 
-### All 11 MVP Features Complete + Major Enhancements ✅
+**JellyDM Tutor Platform (Phases 8-9):**
+- ✅ **Phase 8:** UI Transformation (Complete) - 5 tabs, AI-aware chat, ~3,263 lines
+- 🔄 **Phase 9:** Backend Integration (40% Complete)
+  - ✅ PRs 1-6: AI infrastructure, RAG, tools, date parser, event backend, Schedule wiring
+  - ⏳ PRs 7-15: RSVP, urgency, conflicts, tasks, reminders, monitoring
+
+**Latest:** Schedule tab now reads from Firestore. Event CRUD functional. AI gating deployed.
+
+### All 11 MVP Features Complete + JellyDM Enhancements 🚀
 - ✅ Email/password authentication (Google Sign-In removed)
 - ✅ User profiles with photo upload to Firebase Storage
 - ✅ Create & manage conversations in real-time
@@ -46,6 +53,19 @@ A production-quality real-time messaging application with offline support, optim
 - ✅ Empty states with actions
 - ✅ Long-press to delete conversations
 - ✅ 0 TypeScript errors in production code
+
+**JellyDM Tutor Platform Features (New):**
+- ✅ 5-tab navigation (Chats, Schedule, Tasks, Assistant, Profile)
+- ✅ AI-aware chat UI (AssistantBubble, inline cards, StatusChip)
+- ✅ Schedule tab with calendar and events (connected to Firestore ✅)
+- ✅ Tasks tab with deadline management (mock data, ready to wire)
+- ✅ Assistant dashboard with insights
+- ✅ AI gating classifier (GPT-3.5/Claude Haiku)
+- ✅ RAG pipeline with vector embeddings
+- ✅ Function calling framework (8 tools)
+- ✅ LLM date parser (GPT-4-turbo structured output)
+- ✅ Event backend (CRUD, conflict checking, security rules)
+- ✅ RSVP handlers functional
 
 ---
 

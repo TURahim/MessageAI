@@ -8,20 +8,20 @@ interface AddLessonModalProps {
 
 export default function AddLessonModal({ visible, onClose }: AddLessonModalProps) {
   const [text, setText] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!text.trim()) {
       Alert.alert('Empty Input', 'Please describe the lesson you want to schedule');
       return;
     }
 
     // BEGIN MOCK_AI_PARSE
-    // TODO: Replace with aiOrchestratorService.parseLesson() Cloud Function call
-    // See JellyDMTasklist.md PR6.2 for replacement code (use httpsCallable, not /api/)
-    // Mock action - will be wired to AI later
+    // TODO: Wire to Cloud Function when parseLesson CF is implemented
+    // For now, show alert that AI parsing is not yet deployed
     Alert.alert(
-      'AI Scheduling',
-      `AI will parse: "${text.trim()}"\n\nThis will be connected to the AI orchestrator to extract date, time, and create the session.`,
+      'AI Parsing',
+      `Ready to parse: "${text.trim()}"\n\nNote: This will call the parseLesson Cloud Function once deployed.\n\nFor now, create events manually via the Schedule tab.`,
       [
         {
           text: 'OK',
@@ -33,6 +33,37 @@ export default function AddLessonModal({ visible, onClose }: AddLessonModalProps
       ]
     );
     // END MOCK_AI_PARSE
+    
+    /* REAL IMPLEMENTATION (uncomment when parseLesson CF is deployed):
+    setLoading(true);
+    try {
+      const { parseLesson } = await import('@/services/ai/aiOrchestratorService');
+      const { useAuth } = await import('@/hooks/useAuth');
+      const { user } = useAuth();
+      
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const result = await parseLesson(text.trim(), user?.uid || '', timezone);
+      
+      if (result.success && result.event) {
+        const { createEvent } = await import('@/services/schedule/eventService');
+        const eventId = await createEvent({
+          ...result.event,
+          conversationId: 'general', // Or current conversation
+          createdBy: user?.uid || '',
+        }, timezone);
+        
+        Alert.alert('Success', `Lesson scheduled! Event ID: ${eventId}`);
+        setText('');
+        onClose();
+      } else {
+        Alert.alert('Error', result.error || 'Failed to parse lesson');
+      }
+    } catch (error: any) {
+      Alert.alert('Error', error.message);
+    } finally {
+      setLoading(false);
+    }
+    */
   };
 
   const handleCancel = () => {

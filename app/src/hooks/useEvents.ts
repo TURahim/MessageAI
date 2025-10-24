@@ -19,8 +19,55 @@ export function useEvents(userId: string | null, selectedDate?: Date) {
     // BEGIN MOCK_EVENTS
     // TODO: Replace this entire block with Firestore onSnapshot listener
     // See JellyDMTasklist.md PR6.1 for replacement code
-    // Simulate async data fetch
-    const loadEvents = async () => {
+    
+    if (!userId) {
+      setEvents([]);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+
+    // Real Firestore listener
+    const { collection: firestoreCollection, query: firestoreQuery, where, orderBy, onSnapshot } = require('firebase/firestore');
+    const { db } = require('@/lib/firebase');
+
+    const eventsRef = firestoreCollection(db, 'events');
+    const q = firestoreQuery(
+      eventsRef,
+      where('participants', 'array-contains', userId),
+      orderBy('startTime', 'asc')
+    );
+
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot: any) => {
+        const eventsData: Event[] = snapshot.docs.map((doc: any) => ({
+          id: doc.id,
+          title: doc.data().title,
+          startTime: doc.data().startTime.toDate(),
+          endTime: doc.data().endTime.toDate(),
+          participants: doc.data().participants,
+          participantNames: doc.data().participantNames,
+          status: doc.data().status,
+          color: doc.data().status === 'confirmed' ? '#4CAF50' : doc.data().status === 'declined' ? '#F44336' : '#FF9800',
+        }));
+
+        setEvents(eventsData);
+        setLoading(false);
+        console.log(`✅ Loaded ${eventsData.length} events from Firestore`);
+      },
+      (error: Error) => {
+        console.error('❌ Error loading events:', error);
+        setLoading(false);
+      }
+    );
+
+    // Cleanup to prevent memory leaks
+    return () => unsubscribe();
+    
+    // FALLBACK: Keep mock data as commented fallback
+    /* const loadEvents = async () => {
       setLoading(true);
 
       // Mock delay to simulate network request
@@ -118,9 +165,9 @@ export function useEvents(userId: string | null, selectedDate?: Date) {
     } else {
       setEvents([]);
       setLoading(false);
-    }
+    } */
     // END MOCK_EVENTS
-  }, [userId, selectedDate]);
+  }, [userId]);
 
   return { events, loading };
 }

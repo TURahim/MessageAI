@@ -11,6 +11,7 @@ export interface Event {
   participantNames?: string[];
   status?: 'pending' | 'confirmed' | 'declined';
   color?: string;
+  conversationId?: string; // Link to conversation (PR5)
 }
 
 interface EventListItemProps {

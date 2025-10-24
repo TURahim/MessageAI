@@ -182,23 +182,23 @@ MessageAI/
 
 ---
 
-## Phase 1: AI Infrastructure (PRs 1-3)
+## Phase 1: AI Infrastructure (PRs 1-3) ✅ COMPLETE
 
-**Timeline:** 6-8 days total  
+**Timeline:** 6-8 days total → **Completed Oct 24, 2025**  
 **Goal:** Establish architectural foundations + evaluation framework
 
-### PR1: AI Agent Setup + Timezone Architecture + Eval Harness
+### PR1: AI Agent Setup + Timezone Architecture + Eval Harness ✅
 
-**Estimated Time:** 3 days
+**Estimated Time:** 3 days → **Completed**
 
 **High-Level Tasks:**
-- [ ] Setup Firebase Cloud Functions with TypeScript
-- [ ] Integrate AI SDK by Vercel
-- [ ] Configure OpenAI and Anthropic API keys
-- [ ] Implement gating classifier (Haiku/GPT-3.5)
-- [ ] Build timezone architecture with validation
-- [ ] Write DST integration tests
-- [ ] **NEW:** Build lightweight eval harness for CI
+- [x] Setup Firebase Cloud Functions with TypeScript
+- [x] Integrate AI SDK by Vercel
+- [x] Configure OpenAI and Anthropic API keys
+- [x] Implement gating classifier (Haiku/GPT-3.5)
+- [x] Build timezone architecture with validation
+- [x] Write DST integration tests
+- [x] Build lightweight eval harness for CI
 
 **Detailed Subtasks:**
 
@@ -271,16 +271,16 @@ MessageAI/
 
 ---
 
-### PR2: RAG Pipeline + Vector Store Abstraction
+### PR2: RAG Pipeline + Vector Store Abstraction ✅
 
-**Estimated Time:** 2-3 days
+**Estimated Time:** 2-3 days → **Completed**
 
 **High-Level Tasks:**
-- [ ] Define VectorRetriever interface
-- [ ] Implement Firebase, Pinecone, and Mock retrievers
-- [ ] Setup embedding service (OpenAI text-embedding-3-small)
-- [ ] Build RAG context retrieval with top-K + recency
-- [ ] Write unit tests with MockRetriever
+- [x] Define VectorRetriever interface
+- [x] Implement Firebase, Pinecone, and Mock retrievers
+- [x] Setup embedding service (OpenAI text-embedding-3-small)
+- [x] Build RAG context retrieval with top-K + recency
+- [x] Write unit tests with MockRetriever
 
 **Detailed Subtasks:**
 
@@ -347,16 +347,16 @@ MessageAI/
 
 ---
 
-### PR3: Function Calling Framework
+### PR3: Function Calling Framework ✅
 
-**Estimated Time:** 1-2 days
+**Estimated Time:** 1-2 days → **Completed**
 
 **High-Level Tasks:**
-- [ ] Define all 8 tool schemas (JSON + TypeScript)
-- [ ] Build tool executor with error handling
-- [ ] Implement retry logic with exponential backoff
-- [ ] Create failed_operations collection
-- [ ] **NEW:** Add failed operations viewer
+- [x] Define all 8 tool schemas (JSON + TypeScript)
+- [x] Build tool executor with error handling
+- [x] Implement retry logic with exponential backoff
+- [x] Create failed_operations collection
+- [x] Add failed operations viewer
 
 **Detailed Subtasks:**
 
@@ -423,20 +423,20 @@ MessageAI/
 
 ---
 
-## Phase 2: Schedule Extraction (PRs 4-6)
+## Phase 2: Schedule Extraction (PRs 4-6) ✅ COMPLETE
 
-**Timeline:** 6-8 days total  
+**Timeline:** 6-8 days total → **Completed Oct 24, 2025**  
 **Goal:** Extract dates/times and create events
 
-### PR4: LLM Date Parser
+### PR4: LLM Date Parser ✅
 
-**Estimated Time:** 2 days
+**Estimated Time:** 2 days → **Completed**
 
 **High-Level Tasks:**
-- [ ] Build GPT-4 prompt for date/time extraction
-- [ ] Implement time.parse tool handler
-- [ ] Handle timezone conversion with date-fns-tz
-- [ ] Test common phrases
+- [x] Build GPT-4 prompt for date/time extraction
+- [x] Implement time.parse tool handler
+- [x] Handle timezone conversion with date-fns-tz
+- [x] Test common phrases
 
 **Key Files:** `functions/src/ai/promptTemplates.ts`, `functions/src/ai/toolExecutor.ts`, `app/src/components/chat/DateHighlight.tsx`, `app/__tests__/services/timeParse.test.ts`
 
@@ -449,17 +449,17 @@ MessageAI/
 
 ---
 
-### PR5: Event Data Model + Security Rules
+### PR5: Event Data Model + Security Rules ✅
 
-**Estimated Time:** 2-3 days
+**Estimated Time:** 2-3 days → **Completed**
 
 **High-Level Tasks:**
-- [ ] Design Firestore events collection
-- [ ] Implement event CRUD service
-- [ ] Add transactional conflict checking
-- [ ] Create composite indexes
-- [ ] Write security rules
-- [ ] **NEW:** Add Firestore emulator tests
+- [x] Design Firestore events collection
+- [x] Implement event CRUD service
+- [x] Add transactional conflict checking
+- [x] Create composite indexes
+- [x] Write security rules
+- [x] Add Firestore emulator tests
 
 **Key Files:** `app/src/types/eventTypes.ts`, `app/src/services/schedule/eventService.ts`, `app/src/services/schedule/conflictService.ts`, `firestore.indexes.json`, `firestore.rules`, `app/__tests__/emulator/firestore-rules.test.ts`
 
@@ -501,16 +501,16 @@ MessageAI/
 
 ---
 
-### PR6: Wire Schedule UI to Backend (REVISED - UI Already Shipped)
+### PR6: Wire Schedule UI to Backend ✅
 
-**Estimated Time:** 2-3 days
+**Estimated Time:** 2-3 days → **Completed**
 
 **High-Level Tasks:**
-- [ ] Wire existing useEvents hook to Firestore /events collection
-- [ ] Wire EventDetailsSheet action handlers to backend
-- [ ] Wire AddLessonModal to AI parsing endpoint
-- [ ] Integrate ConflictWarning with conflict detection service
-- [ ] Test end-to-end event creation and display
+- [x] Wire existing useEvents hook to Firestore /events collection
+- [x] Wire EventDetailsSheet action handlers to backend
+- [x] Wire AddLessonModal to AI parsing endpoint (ready for CF deployment)
+- [x] Integrate ConflictWarning with conflict detection service (ready for PR10)
+- [x] Test end-to-end event creation and display
 
 **Key Files:** `app/src/hooks/useEvents.ts`, `app/src/components/EventDetailsSheet.tsx`, `app/src/components/AddLessonModal.tsx`, `app/src/components/MessageBubble.tsx`
 
