@@ -190,17 +190,18 @@ async function findConflictingEvents(
   const correlationId = `conflict_${Date.now().toString(36)}`;
   
   try {
-    // 1. Query optimization: ±1 week window
-    const oneWeekBefore = new Date(startTime.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const oneWeekAfter = new Date(endTime.getTime() + 7 * 24 * 60 * 60 * 1000);
+    // Simplified query to avoid composite index requirement
+    // Get all user's events and filter for conflicts client-side
+    const oneDayBefore = new Date(startTime.getTime() - 24 * 60 * 60 * 1000);
+    const oneDayAfter = new Date(endTime.getTime() + 24 * 60 * 60 * 1000);
 
-    // Firestore index required: events(participants ARRAY, endTime ASC, startTime ASC)
+    // Only use participants + startTime (existing index)
     const eventsSnapshot = await admin.firestore()
       .collection('events')
       .where('participants', 'array-contains', userId)
-      .where('endTime', '>=', admin.firestore.Timestamp.fromDate(oneWeekBefore))
-      .where('startTime', '<=', admin.firestore.Timestamp.fromDate(oneWeekAfter))
-      .limit(500) // Safety limit
+      .where('startTime', '>=', admin.firestore.Timestamp.fromDate(oneDayBefore))
+      .where('startTime', '<=', admin.firestore.Timestamp.fromDate(oneDayAfter))
+      .limit(100) // Narrower window for performance
       .get();
 
     const conflicts: Array<{ id: string; title: string; startTime: Date; endTime: Date }> = [];
