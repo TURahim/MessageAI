@@ -17,7 +17,7 @@ import * as logger from 'firebase-functions/logger';
 
 export interface ResponsePattern {
   userId: string;
-  avgResponseTimeMinutes: number;
+  avgResponseTimeMinutes: number | null; // null when no responses
   lastResponseDate: Date;
   responseCount: number;
   noResponseCount: number; // Events with no RSVP
@@ -26,7 +26,7 @@ export interface ResponsePattern {
 export interface EngagementPattern {
   conversationId: string;
   lastMessageDate: Date;
-  daysSinceLastMessage: number;
+  daysSinceLastMessage: number | null; // null when no messages
   messageCount30d: number;
   hasScheduledEvents: boolean;
   hasUnconfirmedEvents: boolean;
@@ -47,10 +47,13 @@ export async function analyzeResponsePattern(
   const cutoffDate = new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000);
 
   try {
+    // 4. Query scale: add limit and index comment
+    // Index: events(participants ARRAY, createdAt ASC)
     const eventsSnapshot = await admin.firestore()
       .collection('events')
       .where('participants', 'array-contains', userId)
       .where('createdAt', '>=', admin.firestore.Timestamp.fromDate(cutoffDate))
+      .limit(2000) // Safety limit
       .get();
 
     let totalResponseTimeMs = 0;
@@ -62,10 +65,29 @@ export async function analyzeResponsePattern(
       const event = doc.data();
       const rsvp = event.rsvps?.[userId];
 
-      if (rsvp) {
+      // 2. Treat response as any RSVP with response != 'pending'
+      if (rsvp && rsvp.response && rsvp.response !== 'pending') {
         responseCount++;
+        
+        // 1. Guard toDate() calls
+        if (!rsvp.respondedAt || !event.createdAt) {
+          logger.warn('⚠️ Missing timestamps in RSVP, skipping', {
+            eventId: doc.id,
+          });
+          return;
+        }
+
         const respondedAt = rsvp.respondedAt.toDate();
         const createdAt = event.createdAt.toDate();
+        
+        // Validate dates
+        if (isNaN(respondedAt.getTime()) || isNaN(createdAt.getTime())) {
+          logger.error('❌ Invalid timestamps in RSVP, skipping', {
+            eventId: doc.id,
+          });
+          return;
+        }
+
         const responseTime = respondedAt.getTime() - createdAt.getTime();
         totalResponseTimeMs += responseTime;
 
@@ -73,14 +95,15 @@ export async function analyzeResponsePattern(
           lastResponseDate = respondedAt;
         }
       } else {
-        // No response yet
+        // No response or pending
         noResponseCount++;
       }
     });
 
+    // 2. avgResponseTimeMinutes should be null when responseCount == 0
     const avgResponseTimeMinutes = responseCount > 0 
       ? totalResponseTimeMs / responseCount / (60 * 1000)
-      : 0;
+      : null;
 
     return {
       userId,
@@ -97,7 +120,7 @@ export async function analyzeResponsePattern(
 
     return {
       userId,
-      avgResponseTimeMinutes: 0,
+      avgResponseTimeMinutes: null,
       lastResponseDate: new Date(0),
       responseCount: 0,
       noResponseCount: 0,
@@ -119,6 +142,7 @@ export async function analyzeEngagementPattern(
     const cutoffDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
     // Get recent messages
+    // Index: conversations/{id}/messages(serverTimestamp DESC)
     const messagesSnapshot = await admin.firestore()
       .collection('conversations')
       .doc(conversationId)
@@ -128,10 +152,37 @@ export async function analyzeEngagementPattern(
       .limit(100)
       .get();
 
-    const messageCount30d = messagesSnapshot.docs.length;
-    const lastMessage = messagesSnapshot.docs[0];
-    const lastMessageDate = lastMessage?.data().serverTimestamp?.toDate() || new Date(0);
-    const daysSinceLastMessage = (Date.now() - lastMessageDate.getTime()) / (24 * 60 * 60 * 1000);
+    // 3. Filter out assistant/system messages (in memory)
+    const userMessages = messagesSnapshot.docs.filter(doc => {
+      const data = doc.data();
+      const senderId = data.senderId;
+      const role = data.meta?.role;
+      
+      // Exclude assistant and system messages
+      return senderId !== 'assistant' && role !== 'assistant' && role !== 'system';
+    });
+
+    const messageCount30d = userMessages.length;
+    
+    // Find last user message
+    let lastMessageDate = new Date(0);
+    let daysSinceLastMessage: number | null = null;
+
+    if (userMessages.length > 0) {
+      const lastMsg = userMessages[0];
+      const timestamp = lastMsg.data().serverTimestamp;
+      
+      // 1. Guard toDate() call
+      if (timestamp) {
+        const msgDate = timestamp.toDate();
+        
+        if (!isNaN(msgDate.getTime())) {
+          lastMessageDate = msgDate;
+          // 3. Use Math.floor for day counts
+          daysSinceLastMessage = Math.floor((Date.now() - msgDate.getTime()) / (24 * 60 * 60 * 1000));
+        }
+      }
+    }
 
     // Check for scheduled events
     const futureEventsSnapshot = await admin.firestore()
@@ -157,7 +208,7 @@ export async function analyzeEngagementPattern(
     return {
       conversationId,
       lastMessageDate,
-      daysSinceLastMessage: Math.round(daysSinceLastMessage),
+      daysSinceLastMessage, // null or number
       messageCount30d,
       hasScheduledEvents,
       hasUnconfirmedEvents,
@@ -171,7 +222,7 @@ export async function analyzeEngagementPattern(
     return {
       conversationId,
       lastMessageDate: new Date(0),
-      daysSinceLastMessage: 0,
+      daysSinceLastMessage: null,
       messageCount30d: 0,
       hasScheduledEvents: false,
       hasUnconfirmedEvents: false,
@@ -202,9 +253,17 @@ export async function getNoResponseParticipants(
     const event = eventDoc.data();
     const participants = event?.participants || [];
     const rsvps = event?.rsvps || {};
+    const createdBy = event?.createdBy;
 
-    // Find participants who haven't responded
-    const noResponse = participants.filter((uid: string) => !rsvps[uid]);
+    // 5. Exclude event.createdBy from participants by default
+    const requiredParticipants = participants.filter((uid: string) => uid !== createdBy);
+
+    // Find participants who haven't responded or are 'pending'
+    const noResponse = requiredParticipants.filter((uid: string) => {
+      const rsvp = rsvps[uid];
+      // Consider 'pending' or missing as no response
+      return !rsvp || rsvp.response === 'pending' || !rsvp.response;
+    });
 
     return noResponse;
   } catch (error: any) {
