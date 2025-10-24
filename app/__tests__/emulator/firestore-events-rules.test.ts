@@ -23,6 +23,9 @@ import * as path from 'path';
 
 let testEnv: RulesTestEnvironment;
 
+// Skip emulator tests in CI if USE_EMULATOR not set
+const describeOrSkip = process.env.USE_EMULATOR === 'true' ? describe : describe.skip;
+
 beforeAll(async () => {
   // Load Firestore rules
   const rulesPath = path.join(__dirname, '../../../firestore.rules');
@@ -46,7 +49,7 @@ afterEach(async () => {
   await testEnv.clearFirestore();
 });
 
-describe('Events Collection Security Rules', () => {
+describeOrSkip('Events Collection Security Rules', () => {
   const mockEvent = {
     title: 'Math Tutoring',
     startTime: Timestamp.now(),
