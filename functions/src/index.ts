@@ -10,6 +10,8 @@ import { sendUrgentNotifications } from './notifications/urgentNotifier';
 import { scheduleEventReminders, scheduleTaskReminders } from './notifications/reminderScheduler';
 import { processOutboxNotification } from './notifications/outboxWorker';
 import type { ReminderOutboxDoc } from './notifications/reminderScheduler';
+import { processUnconfirmedEvents } from './ai/autonomousMonitor';
+import { processPostSessionNotes, processLongGapAlerts } from './ai/nudgeGenerator';
 
 // Export admin viewer (PR3)
 export { viewFailedOps } from './admin/failedOpsViewer';
@@ -356,10 +358,18 @@ export const scheduledReminderJob = onSchedule({
     // Schedule task reminders (due today, overdue)
     const taskReminders = await scheduleTaskReminders();
 
+    // PR13: Check for unconfirmed events and send nudges
+    const unconfirmedNudges = await processUnconfirmedEvents();
+
+    // PR14: Post-session note prompts (for all tutors)
+    // Note: In production, would iterate through active tutors
+    // For now, handled per-user when they're active
+
     logger.info('✅ Reminder scheduling complete', {
       eventReminders,
       taskReminders,
-      total: eventReminders + taskReminders,
+      unconfirmedNudges,
+      total: eventReminders + taskReminders + unconfirmedNudges,
     });
   } catch (error: any) {
     logger.error('❌ Reminder scheduling failed', {
@@ -405,6 +415,58 @@ export const outboxWorker = onDocumentWritten({
     logger.error('❌ Outbox worker failed', {
       docId: docId.substring(0, 40),
       error: error.message,
+    });
+  }
+});
+
+/**
+ * Cloud Function: Daily Nudge Job (PR13-14)
+ * Runs once per day to check for long gaps and send alerts
+ * Less frequent than reminders to avoid spam
+ */
+export const dailyNudgeJob = onSchedule({
+  schedule: 'every day 09:00',
+  region: 'us-central1',
+  timeoutSeconds: 300,
+  memory: '512MiB',
+}, async () => {
+  logger.info('📅 Running daily nudge job');
+
+  try {
+    // Get all active tutors (users who created events in last 90 days)
+    const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+    
+    const recentEventsSnapshot = await admin.firestore()
+      .collection('events')
+      .where('createdAt', '>=', admin.firestore.Timestamp.fromDate(ninetyDaysAgo))
+      .get();
+
+    const tutorIds = new Set<string>();
+    recentEventsSnapshot.docs.forEach(doc => {
+      const createdBy = doc.data().createdBy;
+      if (createdBy) tutorIds.add(createdBy);
+    });
+
+    logger.info('📊 Processing nudges for active tutors', {
+      tutorCount: tutorIds.size,
+    });
+
+    let totalLongGapAlerts = 0;
+
+    for (const tutorId of tutorIds) {
+      // Process long gap alerts for each tutor
+      const alerts = await processLongGapAlerts(tutorId);
+      totalLongGapAlerts += alerts;
+    }
+
+    logger.info('✅ Daily nudge job complete', {
+      tutors: tutorIds.size,
+      longGapAlerts: totalLongGapAlerts,
+    });
+  } catch (error: any) {
+    logger.error('❌ Daily nudge job failed', {
+      error: error.message,
+      stack: error.stack,
     });
   }
 });

@@ -133,5 +133,12 @@ service cloud.firestore {
       // Only Cloud Functions can write (scheduler + worker)
       allow write: if false; // Only Cloud Functions via admin SDK
     }
+
+    // --- NUDGE_LOGS COLLECTION (PR13) ---
+    // Analytics for autonomous monitoring nudges
+    match /nudge_logs/{logId} {
+      allow read: if request.auth != null && request.auth.token.admin == true;
+      allow write: if false; // Only Cloud Functions via admin SDK
+    }
   }
 }

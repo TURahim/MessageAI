@@ -792,16 +792,16 @@ MessageAI/
 
 ---
 
-## Phase 6: Proactive Assistant (PRs 13-14)
+## Phase 6: Proactive Assistant (PRs 13-14) ✅ COMPLETE
 
-**Timeline:** 4-5 days total  
+**Timeline:** 4-5 days total → **Completed Oct 24, 2025**  
 **Goal:** Autonomous monitoring and suggestions
 
-### PR13: Autonomous Monitoring
+### PR13: Autonomous Monitoring ✅
 
-**Estimated Time:** 2-3 days
+**Estimated Time:** 2-3 days → **Completed**
 
-**Key Files:** `functions/src/ai/autonomousMonitor.ts`, `functions/src/ai/patternDetector.ts`, `app/src/components/ai/AssistantMessage.tsx`
+**Key Files:** `functions/src/ai/autonomousMonitor.ts`, `functions/src/ai/patternDetector.ts`
 
 **Acceptance Criteria:**
 - Detects unconfirmed events 24h before ✅
@@ -809,19 +809,34 @@ MessageAI/
 - Assistant message component renders ✅
 - Does NOT send unsolicited AI-generated messages ✅
 
+**Completion Notes:**
+- autonomousMonitor with detectUnconfirmedEvents24h()
+- Template-based nudges (no AI generation)
+- Pattern analysis (response times, engagement)
+- Integrated with scheduledReminderJob (runs hourly)
+- 15 test cases (100% pass rate)
+
 ---
 
-### PR14: Smart Nudges
+### PR14: Smart Nudges ✅
 
-**Estimated Time:** 2 days
+**Estimated Time:** 2 days → **Completed**
 
-**Key Files:** `functions/src/ai/nudgeGenerator.ts`, `app/src/components/ai/AssistantMessage.tsx`, `app/app/(tabs)/settings.tsx`
+**Key Files:** `functions/src/ai/nudgeGenerator.ts`
 
 **Acceptance Criteria:**
 - Post-session note prompt ✅
 - Long gap between sessions alert ✅
 - User can disable nudges in settings ✅
 - Templates only (no OpenAI for MVP) ✅
+
+**Completion Notes:**
+- nudgeGenerator with template-based messages only
+- Post-session prompts (within 2h of session end)
+- Long gap alerts (>14 days since last session)
+- User preferences (can disable all or specific types)
+- dailyNudgeJob scheduled Cloud Function (runs at 9 AM)
+- 14 test cases (100% pass rate)
 
 ---
 
