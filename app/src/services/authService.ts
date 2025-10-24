@@ -28,6 +28,9 @@ export async function signUpWithEmail(
   // Update profile
   await updateProfile(user, { displayName });
   
+  // Detect user's timezone
+  const detectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Toronto';
+  
   // Create user document in Firestore
   await setDoc(doc(db, 'users', user.uid), {
     uid: user.uid,
@@ -36,6 +39,7 @@ export async function signUpWithEmail(
     photoURL: null,
     bio: '',
     friends: [],
+    timezone: detectedTimezone,
     presence: {
       status: 'offline',
       lastSeen: serverTimestamp(),
@@ -68,11 +72,15 @@ async function ensureUserDocument(user: any) {
   };
 
   if (!userDoc.exists()) {
+    // Detect timezone for new users
+    const detectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Toronto';
+    
     // Create new document
     await setDoc(userRef, {
       ...userData,
       bio: '',
       friends: [],
+      timezone: detectedTimezone,
       createdAt: serverTimestamp(),
     });
     console.log('✅ Created user document for:', user.uid);

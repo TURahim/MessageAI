@@ -239,9 +239,13 @@ export async function createDeadlineFromExtraction(
   }
 
   try {
-    // Get assignee name for display
+    // Get assignee name and sender's timezone
     const assigneeDoc = await admin.firestore().doc(`users/${assignee}`).get();
     const assigneeName = assigneeDoc.data()?.displayName || 'Unknown';
+    
+    // Get sender's timezone for proper date formatting
+    const { getUserTimezone } = await import('../utils/timezone');
+    const senderTimezone = await getUserTimezone(createdBy);
 
     // Create deadline in Firestore
     const deadlineRef = await admin.firestore().collection('deadlines').add({
@@ -268,7 +272,8 @@ export async function createDeadlineFromExtraction(
       deadlineRef.id,
       task.title,
       new Date(task.dueDate),
-      assigneeName
+      assigneeName,
+      senderTimezone
     );
 
     return deadlineRef.id;
@@ -290,9 +295,18 @@ async function postDeadlineMessage(
   deadlineId: string,
   title: string,
   dueDate: Date,
-  assigneeName: string
+  assigneeName: string,
+  timezone: string = 'America/Toronto'
 ): Promise<void> {
   try {
+    // Format due date in sender's timezone
+    const dueDateStr = dueDate.toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      timeZone: timezone,
+    });
+
     await admin.firestore()
       .collection('conversations')
       .doc(conversationId)
@@ -301,7 +315,7 @@ async function postDeadlineMessage(
         senderId: 'assistant',
         senderName: 'JellyDM Assistant',
         type: 'text',
-        text: `📝 I've added "${title}" to ${assigneeName}'s task list.`,
+        text: `📝 I've added "${title}" to ${assigneeName}'s task list (due ${dueDateStr}).`,
         clientTimestamp: admin.firestore.FieldValue.serverTimestamp(),
         serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
         status: 'sent',

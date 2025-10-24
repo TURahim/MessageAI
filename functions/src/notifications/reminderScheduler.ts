@@ -86,13 +86,24 @@ export async function scheduleEventReminders(): Promise<number> {
       const is24hWindow = eventStart.getTime() > now.getTime() + 23 * 60 * 60 * 1000;
       if (is24hWindow) {
         for (const userId of participants) {
+          // Get user's timezone for personalized reminder
+          const { getUserTimezone } = await import('../utils/timezone');
+          const userTimezone = await getUserTimezone(userId);
+          
+          const eventTimeStr = eventStart.toLocaleString('en-US', {
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true,
+            timeZone: userTimezone,
+          });
+          
           const created = await createReminderOutbox({
             entityType: 'event',
             entityId: eventDoc.id,
             targetUserId: userId,
             reminderType: '24h_before',
             title: `Reminder: ${event.title}`,
-            body: `You have "${event.title}" tomorrow at ${formatTime(eventStart)}`,
+            body: `You have "${event.title}" tomorrow at ${eventTimeStr}`,
             data: {
               eventId: eventDoc.id,
               conversationId: event.conversationId,
@@ -111,13 +122,24 @@ export async function scheduleEventReminders(): Promise<number> {
       
       if (is2hWindow) {
         for (const userId of participants) {
+          // Get user's timezone for personalized reminder
+          const { getUserTimezone } = await import('../utils/timezone');
+          const userTimezone = await getUserTimezone(userId);
+          
+          const eventTimeStr = eventStart.toLocaleString('en-US', {
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true,
+            timeZone: userTimezone,
+          });
+          
           const created = await createReminderOutbox({
             entityType: 'event',
             entityId: eventDoc.id,
             targetUserId: userId,
             reminderType: '2h_before',
             title: `Reminder: ${event.title} in 2 hours`,
-            body: `Your session starts at ${formatTime(eventStart)}`,
+            body: `Your session starts at ${eventTimeStr}`,
             data: {
               eventId: eventDoc.id,
               conversationId: event.conversationId,

@@ -7,7 +7,7 @@ service cloud.firestore {
       allow read: if request.auth != null; // any signed-in user can see others
       allow create, delete: if request.auth != null && request.auth.uid == uid; // only self
       
-      // Allow updates with specific rules for friends and pushToken
+      // Allow updates with specific rules for friends, pushToken, and timezone
       allow update: if request.auth != null && (
         // User can update their own document
         request.auth.uid == uid ||
@@ -15,6 +15,11 @@ service cloud.firestore {
         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['friends']) &&
          request.auth.uid in request.resource.data.get('friends', []))
       );
+      
+      // Allow users to update their own timezone, locale, bio, displayName, photoURL
+      allow update: if request.auth.uid == uid &&
+        request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly(['timezone', 'locale', 'displayName', 'bio', 'photoURL']);
       
       // Allow Cloud Functions to update pushToken (unauthenticated context)
       // This enables token cleanup and updates from server-side

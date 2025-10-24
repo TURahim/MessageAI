@@ -156,7 +156,7 @@ describe('Autonomous Monitor', () => {
       };
 
       const noResponse = event.participants.filter(
-        (uid: string) => !event.rsvps[uid]
+        (uid: string) => !(event.rsvps as any)[uid]
       );
 
       expect(noResponse).toEqual(['user2', 'user3']);

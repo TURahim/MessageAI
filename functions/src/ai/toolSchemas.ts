@@ -168,6 +168,19 @@ export function getToolsForTaskType(taskType: string) {
         'task.create': taskCreateSchema,
         'messages.post_system': messagesPostSystemSchema,
       };
+    case 'deadline':
+      // Deadlines are similar to tasks but with required due dates
+      return {
+        'task.create': taskCreateSchema,
+        'messages.post_system': messagesPostSystemSchema,
+      };
+    case 'reminder':
+      // Reminders can create tasks or send notifications
+      return {
+        'task.create': taskCreateSchema,
+        'reminders.schedule': remindersScheduleSchema,
+        'messages.post_system': messagesPostSystemSchema,
+      };
     case 'urgent':
       return {
         'messages.post_system': messagesPostSystemSchema,

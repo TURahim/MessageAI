@@ -87,6 +87,8 @@ export interface User {
   friends: string[]; // Array of friend UIDs
   pushToken?: string; // Expo push token for remote notifications
   pushTokenUpdatedAt?: Timestamp; // When push token was last updated
+  timezone?: string; // IANA timezone (e.g., "America/Toronto")
+  locale?: string; // Optional for i18n
   presence: UserPresence;
   createdAt?: Timestamp;
 }

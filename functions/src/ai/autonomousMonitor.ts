@@ -120,7 +120,7 @@ export async function sendUnconfirmedEventNudge(
 
   try {
     // Create template-based nudge message
-    const message = buildUnconfirmedEventMessage(event);
+    const message = await buildUnconfirmedEventMessage(event);
 
     // Post to conversation as assistant message
     const messageRef = await admin.firestore()
@@ -167,8 +167,13 @@ export async function sendUnconfirmedEventNudge(
 /**
  * Build template message for unconfirmed event
  * No AI generation - uses predefined templates
+ * Uses tutor's timezone for time display
  */
-function buildUnconfirmedEventMessage(event: UnconfirmedEvent): string {
+async function buildUnconfirmedEventMessage(event: UnconfirmedEvent): Promise<string> {
+  // Fetch tutor's timezone
+  const { getUserTimezone } = await import('../utils/timezone');
+  const tz = await getUserTimezone(event.createdBy);
+  
   const startTime = event.startTime.toLocaleString('en-US', {
     weekday: 'short',
     month: 'short',
@@ -176,6 +181,7 @@ function buildUnconfirmedEventMessage(event: UnconfirmedEvent): string {
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,
+    timeZone: tz,  // Use tutor's timezone
   });
 
   const hoursTillStart = event.hoursTillStart;

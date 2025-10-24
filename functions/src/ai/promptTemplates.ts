@@ -16,23 +16,38 @@ export const GATING_CLASSIFIER_PROMPT = `You are a message classifier for a tuto
 
 Return JSON with this exact structure:
 {
-  "task": "scheduling" | "rsvp" | "task" | "urgent" | null,
+  "task": "scheduling" | "rsvp" | "task" | "urgent" | "deadline" | "reminder" | null,
   "confidence": 0.0-1.0
 }
 
 Task Types:
-- "scheduling": Mentions specific dates/times for sessions (e.g., "tomorrow at 3pm", "Friday morning", "let's schedule a review session Sunday", "schedule English session")
-- "rsvp": Response to an invitation (e.g., "yes that works", "can't make it", "I'll be there")
-- "task": Homework/deadline mention (e.g., "due Friday", "test on Monday", "homework by next week", "remember the assignment is due", "also the quiz is due")
+- "scheduling": Mentions specific dates/times for sessions (e.g., "tomorrow at 3pm", "let's schedule a review session Sunday", "meet Friday morning")
+- "rsvp": Response to an invitation (e.g., "yes that works", "can't make it", "I'll be there", "we're both coming")
+- "task": General action items WITHOUT explicit due dates (e.g., "review chapter 5", "practice problems", "work on essay")
+- "deadline": Academic tasks WITH explicit due dates or deadlines (e.g., "homework due Friday", "test on Monday", "submit by next week", "quiz tomorrow")
+- "reminder": Proactive follow-ups or nudges (e.g., "remember to bring textbook", "don't forget", "just a reminder")
 - "urgent": URGENT matters requiring immediate attention (see urgency rules below)
-- null: Normal chat, no action needed (e.g., "how are you", "thanks", "see you later")
+- null: Normal chat, no action needed (e.g., "how are you", "thanks")
 
-IMPORTANT:
-- "task" includes: homework, assignments, tests, quizzes, projects, essays, reading - ANY academic deadline
-- "scheduling" includes: ANY mention of scheduling a session, lesson, review, tutoring, meeting
-- Look for task/scheduling keywords ANYWHERE in the message, even if surrounded by other text
-- "Hey Brian also remember that the english assignment is due monday" → task (confidence 0.8+)
-- "So lets schedule in the English review session on Sunday" → scheduling (confidence 0.8+)
+IMPORTANT - Priority Order (for mixed messages):
+1. If mixed, pick the highest-impact actionable intent: urgent > scheduling > deadline > rsvp > reminder > task > null
+2. Prefer "deadline" over "task" when ANY due date is mentioned (due, by, on, deadline, submit, turn in)
+3. Prefer "reminder" when message starts with "remember", "don't forget", "reminder", "just a heads up"
+4. Use "task" ONLY for general to-dos WITHOUT specific due dates or deadlines
+5. "Thanks! see you tomorrow" → scheduling (actionable: tomorrow) not null (casual thanks)
+6. Look for keywords ANYWHERE in the message, even if surrounded by other text
+
+Examples:
+- "homework due Friday" → deadline (explicit due date)
+- "test on Monday" → deadline (specific date)
+- "submit essay by next Tuesday" → deadline (deadline keyword + date)
+- "Hey Brian also remember that the english assignment is due monday" → deadline (due date present)
+- "review chapter 5 before next class" → task (no specific due date, vague timing)
+- "finish the essay soon" → task (no explicit deadline)
+- "remember to bring your textbook" → reminder (proactive nudge)
+- "don't forget about the quiz tomorrow" → deadline (has explicit due date: tomorrow)
+- "So lets schedule in the English review session on Sunday" → scheduling (session + date)
+- "Thanks! Let's meet tomorrow at 3pm" → scheduling (meeting + specific time beats casual thanks)
 
 Urgency Detection Rules (HIGH PRECISION TARGET - ≥90%):
 ALWAYS mark as "urgent" with confidence ≥0.85:
@@ -80,10 +95,17 @@ Return JSON:
 Examples:
 - "Yes that works" → {"response": "accept", "confidence": 0.9}
 - "Sounds good" → {"response": "accept", "confidence": 0.85}
+- "We're both coming" → {"response": "accept", "confidence": 0.9}
+- "All of us can make it" → {"response": "accept", "confidence": 0.85}
 - "Can't make it" → {"response": "decline", "confidence": 0.9}
 - "Sorry, I'm busy" → {"response": "decline", "confidence": 0.85}
+- "We won't be able to attend" → {"response": "decline", "confidence": 0.9}
 - "Maybe" → {"response": "unclear", "confidence": 0.3}
 - "Let me check" → {"response": "unclear", "confidence": 0.4}
+
+Special handling:
+- If plural confirmation ("we", "both", "all", "us") → accept applies to all participants in conversation
+- Multi-user replies should still return single response (accept/decline), not per-person
 
 Ambiguity words that reduce confidence: "maybe", "might", "should work", "probably", "think so"
 If detected, require explicit confirmation (set confidence <0.7).
@@ -99,6 +121,7 @@ Message:`;
 export const DATE_TIME_EXTRACTION_PROMPT = `Extract date and time from this message.
 
 CRITICAL: You MUST use the provided timezone for all calculations.
+If timezone not specified in message, use the provided timezone parameter (default: America/New_York).
 
 Return JSON:
 {
@@ -112,6 +135,13 @@ Examples:
 - "tomorrow at 3pm" → Parse relative to current date in timezone
 - "Friday 2pm" → Next Friday at 2pm in timezone
 - "next week" → Default to next Monday 9am in timezone
+- "3pm EST" → Convert EST to America/New_York timezone, then to UTC
+- "2pm PST" → Convert PST to America/Los_Angeles timezone, then to UTC
+
+Timezone Validation:
+- Accept IANA timezones: "America/New_York", "America/Los_Angeles", etc.
+- Convert legacy abbreviations: "EST" → America/New_York, "PST" → America/Los_Angeles
+- If ambiguous timezone in message, use provided timezone parameter
 
 Reference date and timezone will be provided.
 
@@ -128,11 +158,16 @@ Return JSON:
 {
   "found": true/false,
   "title": "extracted task name",
-  "dueDate": "ISO8601 string in UTC",
+  "dueDate": "ISO8601 string in UTC" | null,
   "confidence": 0.0-1.0
 }
 
 Keywords: "due by", "deadline", "homework", "test on", "quiz", "assignment", "submit by"
+
+Fallback Handling:
+- If task found but NO due date detected → return found:true with dueDate:null
+- Example: "Finish essay soon" → {"found": true, "title": "Finish essay", "dueDate": null, "confidence": 0.7}
+- Example: "Complete chapter 5 review" → {"found": true, "title": "Complete chapter 5 review", "dueDate": null, "confidence": 0.6}
 
 Message:`;
 
@@ -141,7 +176,7 @@ Message:`;
  * 
  * Suggests alternative times when conflicts detected
  */
-export const CONFLICT_RESOLUTION_PROMPT = `A scheduling conflict was detected. Suggest 2-3 alternative times.
+export const CONFLICT_RESOLUTION_PROMPT = `A scheduling conflict was detected. Suggest 2-3 alternative times ranked by preference.
 
 Given:
 - Conflicting events (with times)
@@ -154,7 +189,8 @@ Return JSON:
     {
       "startTime": "ISO8601",
       "endTime": "ISO8601",
-      "reason": "Brief explanation"
+      "reason": "Brief explanation",
+      "confidence": 0.0-1.0
     }
   ]
 }
@@ -162,7 +198,14 @@ Return JSON:
 Be considerate of:
 - Time of day (avoid late evenings)
 - Reasonable gaps between sessions
-- DST transitions`;
+- DST transitions
+
+Confidence Guidelines:
+- 0.9-1.0: Perfect fit (good time, adequate notice, no known conflicts)
+- 0.7-0.9: Good fit (acceptable time, minor trade-offs)
+- 0.5-0.7: Acceptable but not ideal (late/early hours, short notice)
+
+Rank alternatives by confidence (highest first).`;
 
 /**
  * Weekly Summary Prompt (for PR8/PR13)
@@ -178,7 +221,13 @@ Focus on:
 - Student strengths/struggles
 - Next steps
 
-Keep it concise (3-4 sentences max), professional, and parent-friendly.
+Tone: Warm, encouraging, not overly formal. Written for parents to understand their child's progress.
+
+Keep it concise:
+- Maximum 100 words
+- 3-4 sentences
+- Parent-friendly language (avoid jargon)
+- Highlight positives while noting areas for improvement
 
 Messages:`;
 
@@ -186,16 +235,22 @@ Messages:`;
  * Orchestration Prompt Builder
  * 
  * Builds prompt for GPT-4 with RAG context and available tools
- * Used for scheduling and RSVP workflows
+ * Used for scheduling, RSVP, and reminder workflows
  */
 export function buildOrchestrationPrompt(
   message: string,
   ragContext: string,
-  taskType: 'scheduling' | 'rsvp',
+  taskType: 'scheduling' | 'rsvp' | 'reminder',
   userId: string,
-  conversationId: string
+  conversationId: string,
+  tone: 'friendly' | 'professional' | 'casual' = 'friendly'
 ): string {
   const currentTime = new Date().toISOString();
+  const toneGuidance = tone === 'friendly' 
+    ? 'Be warm, conversational, and helpful. Use casual language appropriate for tutoring relationships.'
+    : tone === 'professional'
+    ? 'Be professional and concise. Use clear, formal language.'
+    : 'Be casual and brief. Keep responses short and natural.';
   
   if (taskType === 'scheduling') {
     return `You are a scheduling assistant for a tutoring platform. Help create a calendar event from this message.
@@ -209,6 +264,8 @@ ${ragContext || 'No recent context available'}
 **Timezone:** America/New_York (default - will be provided in tool calls)
 **User ID:** ${userId}
 **Conversation ID:** ${conversationId}
+
+**Tone:** ${toneGuidance}
 
 **Your Task:**
 1. Parse the date/time from the message using time.parse tool
@@ -237,6 +294,8 @@ Proceed to extract the scheduling information and create the event.`;
 **Conversation Context:**
 ${ragContext || 'No recent context available'}
 
+**Tone:** ${toneGuidance}
+
 **Your Task:**
 1. Find the most recent pending event in this conversation
 2. Determine if this is accept or decline
@@ -245,8 +304,14 @@ ${ragContext || 'No recent context available'}
 **Instructions:**
 - Look for event invitations in the context
 - "yes", "sounds good", "that works" → accept
+- "we're both coming", "we can make it", "all of us" → accept (applies to all participants)
 - "no", "can't make it", "sorry" → decline
+- "we won't be able to make it" → decline (applies to all participants)
 - If unclear, ask for clarification
+
+**Multi-User Handling:**
+- Plural confirmations ("we", "both", "all") → record accept for responding user
+- System will auto-update event status based on all responses
 
 **Available Tools:**
 - rsvp.record_response: Record RSVP (accept/decline)
@@ -254,6 +319,35 @@ ${ragContext || 'No recent context available'}
 
 User ID: ${userId}
 Conversation ID: ${conversationId}`;
+  } else if (taskType === 'reminder') {
+    return `You are helping process a reminder or follow-up message.
+
+**User Message:** "${message}"
+
+**Conversation Context:**
+${ragContext || 'No recent context available'}
+
+**Tone:** ${toneGuidance}
+
+**Your Task:**
+1. Determine what needs to be reminded about
+2. Create a task or schedule a reminder notification
+3. Post a confirmation message
+
+**Instructions:**
+- "remember to bring textbook" → create task
+- "don't forget quiz tomorrow" → create deadline task with dueDate
+- "reminder about session" → check context for event, create reminder notification
+- If no date mentioned → create general task
+
+**Available Tools:**
+- task.create: Create a task/reminder (with or without due date)
+- reminders.schedule: Schedule notification
+- messages.post_system: Post assistant message
+
+User ID: ${userId}
+Conversation ID: ${conversationId}
+Current Time: ${currentTime}`;
   }
 
   return '';

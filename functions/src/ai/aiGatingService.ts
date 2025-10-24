@@ -17,7 +17,14 @@ import { anthropic } from '@ai-sdk/anthropic';
 import { GATING_CLASSIFIER_PROMPT } from './promptTemplates';
 import * as logger from 'firebase-functions/logger';
 
-export type TaskType = 'scheduling' | 'rsvp' | 'task' | 'urgent' | null;
+export type TaskType = 
+  | 'scheduling'   // meeting or lesson setup
+  | 'rsvp'         // confirmation or decline
+  | 'task'         // general action item (non-deadline)
+  | 'urgent'       // cancellation, emergency, high-priority issue
+  | 'deadline'     // due dates, homework, assignments
+  | 'reminder'     // proactive follow-up or nudge
+  | null;
 
 export interface GatingResult {
   task: TaskType;
@@ -87,6 +94,16 @@ export async function gateMessage(
   // Try models in order with retry logic
   for (let attempt = 0; attempt <= GATING_CONFIG.maxRetries; attempt++) {
     for (const modelConfig of GATING_CONFIG.models) {
+      // 1. Setup timeout with AbortController
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => {
+        controller.abort();
+        logger.warn('⏰ Gating timeout triggered', {
+          model: modelConfig.model,
+          timeout: GATING_CONFIG.timeout,
+        });
+      }, GATING_CONFIG.timeout);
+
       try {
         logger.info(`🔍 Gating attempt ${attempt + 1}/${GATING_CONFIG.maxRetries + 1}`, {
           model: modelConfig.model,
@@ -102,7 +119,11 @@ export async function gateMessage(
           prompt: `${GATING_CLASSIFIER_PROMPT}\n\n"${text}"`,
           maxTokens: 50, // Small response
           temperature: 0.3, // Deterministic
+          abortSignal: controller.signal,
         });
+
+        // Clear timeout on success
+        clearTimeout(timeoutId);
 
         // Parse JSON response (handle markdown code blocks)
         let responseText = result.text.trim();
@@ -115,17 +136,73 @@ export async function gateMessage(
             .trim();
         }
         
-        const parsed = JSON.parse(responseText);
+        // 2. Guard JSON parsing
+        let parsed: any;
+        try {
+          parsed = JSON.parse(responseText);
+        } catch (parseError: any) {
+          logger.error('⚠️ JSON parse failed', {
+            responseText: responseText.substring(0, 200),
+            error: parseError.message,
+            model: modelConfig.model,
+          });
+          
+          // Clear timeout before continuing
+          clearTimeout(timeoutId);
+          
+          // Return safe fallback
+          return {
+            task: null,
+            confidence: 0,
+            processingTime: Date.now() - startTime,
+            modelUsed: modelConfig.model,
+            tokensUsed: { input: 0, output: 0 },
+            cost: 0,
+          };
+        }
+
         const task: TaskType = parsed.task;
-        const confidence: number = parsed.confidence || 0;
+        
+        // 3. Normalize confidence (clamp to 0-1 range)
+        const confidence = Math.max(0, Math.min(parsed.confidence ?? 0, 1));
 
         const processingTime = Date.now() - startTime;
 
-        // Estimate cost (simplified)
-        const inputTokens = Math.ceil(text.length / 4); // ~4 chars per token
-        const outputTokens = result.usage?.completionTokens || 20;
-        const costPerToken = modelConfig.cost / 1_000_000;
-        const estimatedCost = (inputTokens + outputTokens) * costPerToken;
+        // 4. Explicit cost accounting with precise rates
+        let inputTokens = 0;
+        let outputTokens = 0;
+        let preciseCost = 0;
+
+        if (result.usage) {
+          // Use actual usage from API
+          inputTokens = result.usage.promptTokens || 0;
+          outputTokens = result.usage.completionTokens || 0;
+        } else {
+          // Fallback to heuristic
+          inputTokens = Math.ceil(text.length / 4);
+          outputTokens = Math.ceil(responseText.length / 4);
+        }
+
+        // Precise cost calculation based on API pricing
+        // OpenAI GPT-3.5-turbo: $0.50/1M input, $1.50/1M output
+        // Anthropic Claude Haiku: $0.25/1M input, $1.25/1M output
+        if (modelConfig.provider === 'openai') {
+          if (modelConfig.model === 'gpt-3.5-turbo') {
+            preciseCost = (inputTokens * 0.50 + outputTokens * 1.50) / 1_000_000;
+          } else {
+            // Fallback to config cost
+            preciseCost = (inputTokens + outputTokens) * (modelConfig.cost / 1_000_000);
+          }
+        } else if (modelConfig.provider === 'anthropic') {
+          if (modelConfig.model === 'claude-3-haiku-20240307') {
+            preciseCost = (inputTokens * 0.25 + outputTokens * 1.25) / 1_000_000;
+          } else {
+            preciseCost = (inputTokens + outputTokens) * (modelConfig.cost / 1_000_000);
+          }
+        } else {
+          // Generic fallback
+          preciseCost = (inputTokens + outputTokens) * (modelConfig.cost / 1_000_000);
+        }
 
         // Log for weekly analysis
         logger.info('✅ Gating complete', {
@@ -135,7 +212,7 @@ export async function gateMessage(
           model: modelConfig.model,
           inputTokens,
           outputTokens,
-          cost: estimatedCost,
+          cost: preciseCost,
         });
 
         // Log false positives for urgency (precision tracking)
@@ -155,13 +232,25 @@ export async function gateMessage(
             input: inputTokens,
             output: outputTokens,
           },
-          cost: estimatedCost,
+          cost: preciseCost,
         };
       } catch (error: any) {
-        logger.error(`❌ Gating failed with ${modelConfig.model}`, {
-          attempt: attempt + 1,
-          error: error.message,
-        });
+        // Clear timeout on error
+        clearTimeout(timeoutId);
+
+        // Check if timeout/abort error
+        if (error.name === 'AbortError' || error.message?.includes('aborted')) {
+          logger.warn('⏰ Gating timed out', {
+            model: modelConfig.model,
+            timeout: GATING_CONFIG.timeout,
+            attempt: attempt + 1,
+          });
+        } else {
+          logger.error(`❌ Gating failed with ${modelConfig.model}`, {
+            attempt: attempt + 1,
+            error: error.message,
+          });
+        }
 
         // If last attempt with last model, throw
         if (attempt === GATING_CONFIG.maxRetries && 

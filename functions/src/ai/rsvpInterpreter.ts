@@ -2,11 +2,12 @@
  * RSVP Response Interpreter
  * 
  * Classifies natural language responses to event invitations
- * Uses lightweight LLM for fast classification
+ * Uses lightweight LLM for fast classification with strong local rules
  * 
  * Target: >80% accuracy
  * Auto-records when confidence >0.7
  * Detects ambiguity words: "maybe", "might", "should work", "probably"
+ * Fast-path: Skip LLM for obvious accept/decline with confidence 0.9
  */
 
 import { generateObject } from 'ai';
@@ -24,20 +25,70 @@ export interface RSVPInterpretationResult {
   shouldAutoRecord: boolean; // True if confidence >0.7 and no ambiguity
 }
 
+// Helpers
+const NORMALIZE = (s: string) =>
+  s.toLowerCase().normalize('NFKC').replace(/\s+/g, ' ').trim();
+
+const clamp01 = (n: number) => Math.max(0, Math.min(1, n ?? 0));
+
+const MIN_LEN_FOR_AUTO = 3;
+const LLM_TIMEOUT = 3000; // 3 seconds
+
 /**
- * Ambiguity keywords that require explicit confirmation
+ * Robust ambiguity detection with word-boundary regexes
+ * Includes conditional blockers like "yes, but...", "however"
  */
-const AMBIGUITY_KEYWORDS = [
-  'maybe',
-  'might',
-  'should work',
-  'probably',
-  'think so',
-  'not sure',
-  'let me check',
-  'i\'ll see',
-  'possibly',
+const AMBIGUITY_REGEXES: RegExp[] = [
+  /\bmaybe\b/i,
+  /\bmight\b/i,
+  /\bshould\s+work\b/i,
+  /\bprobably\b/i,
+  /\bthink\s+so\b/i,
+  /\bnot\s+sure\b/i,
+  /\blet\s+me\s+check\b/i,
+  /\bi'?ll\s+see\b/i,
+  /\bpossibly\b/i,
+  /\b(yes|sure|sounds\s+good),?\s+but\b/i,  // Conditional blockers
+  /\bhowever\b/i,
+  /\bon\s+second\s+thought\b/i,
+  /\bactually\b.*\bnot\b/i, // "actually not"
 ];
+
+function hasAmbiguity(textN: string): boolean {
+  return AMBIGUITY_REGEXES.some(rx => rx.test(textN));
+}
+
+/**
+ * Strong-rule fast path (deterministic, skip LLM)
+ * Returns null if no clear match
+ */
+const ACCEPT_REGEXES: RegExp[] = [
+  /\by(es|up)\b/i,
+  /\bsure\b/i,
+  /\bsounds\s+good\b/i,
+  /\bworks\s+for\s+me\b/i,
+  /\bthat\s+works\b/i,
+  /\bi'?ll\s+be\s+there\b/i,
+  /\bcount\s+me\s+in\b/i,
+  /\bperfect\b/i,
+  /\bgreat\b(?!\s+but)/i, // "great" but not "great but"
+  /\b(we'?re|i'?m)\s+(both\s+)?coming\b/i,
+];
+
+const DECLINE_REGEXES: RegExp[] = [
+  /\bno(pe)?\b/i,
+  /\b(can('t| )?t|cannot)\s+(make|do|come|attend)\b/i,
+  /\bsorry[, ]+\s*i('?m)?\s+(busy|booked|not\s+available)\b/i,
+  /\bwon'?t\s+be\s+able\s+to\b/i,
+  /\bunable\s+to\b/i,
+  /\bhave\s+to\s+(cancel|decline)\b/i,
+];
+
+function quickClassify(textN: string): RSVPResponse | null {
+  if (ACCEPT_REGEXES.some(r => r.test(textN))) return 'accept';
+  if (DECLINE_REGEXES.some(r => r.test(textN))) return 'decline';
+  return null;
+}
 
 /**
  * Interprets a natural language response to an RSVP
@@ -64,55 +115,77 @@ export async function interpretRSVP(
     eventId: eventContext?.eventId?.substring(0, 8),
   });
 
-  try {
-    // Check for ambiguity keywords first (fast, no LLM needed)
-    const textLower = text.toLowerCase();
-    const hasAmbiguity = AMBIGUITY_KEYWORDS.some(keyword => 
-      textLower.includes(keyword)
-    );
+  // Normalize text once
+  const textN = NORMALIZE(text);
 
-    // Use GPT-3.5 or Claude Haiku for fast classification
-    const result = await generateObject({
-      model: openai('gpt-3.5-turbo'),
-      schema: z.object({
-        response: z.enum(['accept', 'decline', 'unclear']).describe('RSVP response type'),
-        confidence: z.number().min(0).max(1).describe('Confidence score'),
-      }),
-      prompt: `${RSVP_INTERPRETATION_PROMPT}\n\n"${text}"`,
-      temperature: 0.3, // Deterministic
-      maxTokens: 50,
+  // Step 1: Check ambiguity with regex
+  const ambiguous = hasAmbiguity(textN);
+
+  // Step 2: Try fast-path classification (no LLM)
+  const quickResult = quickClassify(textN);
+  
+  if (quickResult && !ambiguous && text.trim().length >= MIN_LEN_FOR_AUTO) {
+    // Fast path: Clear accept/decline with no ambiguity
+    const shouldAutoRecord = true; // High confidence, clear response
+    
+    logger.info('⚡ RSVP quick-classified', {
+      response: quickResult,
+      confidence: 0.9,
+      hasAmbiguity: false,
+      shouldAutoRecord,
+      fastPath: true,
     });
 
-    const parsed = result.object;
+    return {
+      response: quickResult,
+      confidence: 0.9,
+      hasAmbiguity: false,
+      shouldAutoRecord,
+    };
+  }
 
-    // Reduce confidence if ambiguity detected
-    let adjustedConfidence = parsed.confidence;
-    if (hasAmbiguity) {
-      adjustedConfidence = Math.min(parsed.confidence, 0.6); // Cap at 0.6 if ambiguous
-      logger.warn('⚠️ Ambiguity detected in RSVP', {
+  // Step 3: Use LLM for unclear cases (with timeout and retry)
+  try {
+    // Build prompt with event context
+    const ctx = eventContext
+      ? `\nEvent: ${eventContext.eventTitle ?? 'Untitled'} (ID ${eventContext.eventId.slice(0,8)})`
+      : '';
+    const prompt = `${RSVP_INTERPRETATION_PROMPT}${ctx}\n\n"${text}"`;
+
+    // Call LLM with timeout
+    const parsed = await callModelWithRetry(prompt);
+
+    // Clamp confidence
+    let adjustedConfidence = clamp01(parsed.confidence);
+
+    // Cap confidence if ambiguity detected
+    if (ambiguous) {
+      adjustedConfidence = Math.min(adjustedConfidence, 0.6);
+      logger.warn('⚠️ Ambiguity detected, confidence capped', {
         text: text.substring(0, 50),
         originalConfidence: parsed.confidence,
         adjustedConfidence,
       });
     }
 
-    // Determine if we should auto-record
+    // Safer auto-record policy (min length + confidence + no ambiguity)
     const shouldAutoRecord = 
       adjustedConfidence >= 0.7 &&
-      !hasAmbiguity &&
-      parsed.response !== 'unclear';
+      !ambiguous &&
+      parsed.response !== 'unclear' &&
+      text.trim().length >= MIN_LEN_FOR_AUTO;
 
     logger.info('✅ RSVP interpreted', {
       response: parsed.response,
       confidence: adjustedConfidence,
-      hasAmbiguity,
+      hasAmbiguity: ambiguous,
       shouldAutoRecord,
     });
 
     return {
       response: parsed.response,
       confidence: adjustedConfidence,
-      hasAmbiguity,
+      hasAmbiguity: ambiguous,
       shouldAutoRecord,
     };
   } catch (error: any) {
@@ -132,13 +205,77 @@ export async function interpretRSVP(
 }
 
 /**
+ * Call LLM with timeout and one retry
+ * Returns parsed response or throws
+ */
+async function callModelWithRetry(prompt: string, attempt: number = 0): Promise<{
+  response: RSVPResponse;
+  confidence: number;
+}> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => {
+    controller.abort();
+    logger.warn('⏱️ RSVP LLM timeout triggered', { attempt: attempt + 1 });
+  }, LLM_TIMEOUT);
+
+  try {
+    const result = await generateObject({
+      model: openai('gpt-3.5-turbo'),
+      schema: z.object({
+        response: z.enum(['accept', 'decline', 'unclear']).describe('RSVP response type'),
+        confidence: z.number().min(0).max(1).describe('Confidence score'),
+      }),
+      prompt,
+      temperature: 0.3,
+      maxTokens: 50,
+      abortSignal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+    return result.object;
+  } catch (error: any) {
+    clearTimeout(timeoutId);
+
+    // Check if timeout/429/5xx
+    const isRetryable = 
+      error.name === 'AbortError' ||
+      error.message?.includes('aborted') ||
+      error.status === 429 ||
+      (error.status >= 500 && error.status < 600);
+
+    if (isRetryable && attempt === 0) {
+      logger.warn('⏱️ RSVP LLM timeout/error; retrying once', {
+        error: error.message,
+        status: error.status,
+      });
+      
+      // Wait 1s before retry
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      return callModelWithRetry(prompt, attempt + 1);
+    }
+
+    // Final failure - return unclear
+    logger.error('❌ RSVP LLM failed after retry', {
+      error: error.message,
+    });
+
+    return {
+      response: 'unclear',
+      confidence: 0,
+    };
+  }
+}
+
+/**
  * Checks if a message text contains ambiguity keywords
+ * 
+ * Unified with internal regex-based logic to avoid divergence
  * 
  * @param text - Message text
  * @returns true if ambiguous
  */
 export function hasAmbiguityWords(text: string): boolean {
-  const textLower = text.toLowerCase();
-  return AMBIGUITY_KEYWORDS.some(keyword => textLower.includes(keyword));
+  const textN = NORMALIZE(text);
+  return hasAmbiguity(textN);
 }
 

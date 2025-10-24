@@ -255,8 +255,10 @@ export const onMessageCreated = onDocumentCreated({
         );
       }
 
-      // Full AI orchestration for scheduling and RSVP
-      if (analysis.gating.task === 'scheduling' || analysis.gating.task === 'rsvp') {
+      // Full AI orchestration for scheduling, RSVP, and reminders
+      if (analysis.gating.task === 'scheduling' || 
+          analysis.gating.task === 'rsvp' ||
+          analysis.gating.task === 'reminder') {
         logger.info('🎯 Triggering full AI orchestration', {
           task: analysis.gating.task,
         });
