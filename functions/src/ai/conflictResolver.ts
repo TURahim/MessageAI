@@ -12,11 +12,15 @@
  * - Weekend vs weekday availability
  */
 
-import { generateText } from 'ai';
+import { generateObject } from 'ai';
 import { openai } from '@ai-sdk/openai';
 import * as logger from 'firebase-functions/logger';
 import { z } from 'zod';
 import * as admin from 'firebase-admin';
+
+export type WorkingHours = {
+  [day: string]: { start: string; end: string }[];
+};
 
 export interface ConflictContext {
   proposedStartTime: Date;
@@ -30,7 +34,7 @@ export interface ConflictContext {
   userId: string;
   timezone: string;
   sessionDuration: number; // minutes
-  workingHours?: any; // User's availability preferences
+  workingHours?: WorkingHours; // User's availability preferences
 }
 
 export interface AlternativeTimeSlot {
@@ -57,29 +61,35 @@ export interface AlternativeTimeSlot {
 export async function generateAlternatives(
   context: ConflictContext
 ): Promise<AlternativeTimeSlot[]> {
+  const correlationId = `alt_${Date.now().toString(36)}`;
+  
   logger.info('🤖 Generating conflict alternatives with AI', {
+    correlationId,
     userId: context.userId.substring(0, 8),
     conflicts: context.conflictingEvents.length,
   });
 
   try {
-    // Get user's working hours and timezone
-    const { getUserWorkingHours } = await import('../utils/availability');
+    // Source of truth: Resolve timezone and working hours once at start
+    const { getUserWorkingHours, isWithinWorkingHours } = await import('../utils/availability');
     const { getUserTimezone } = await import('../utils/timezone');
     
-    const timezone = await getUserTimezone(context.userId);
-    const workingHours = await getUserWorkingHours(context.userId);
+    const tz = context.timezone || await getUserTimezone(context.userId);
+    const workingHours = context.workingHours || await getUserWorkingHours(context.userId);
 
-    // Get user's schedule for context (next 7 days)
-    const scheduleContext = await getUserScheduleContext(context.userId, timezone);
+    // Get user's schedule for next 7 days
+    const scheduleBlocks = await getScheduleBlocks(context.userId, tz);
+
+    // Get user's schedule context for prompt
+    const scheduleContext = await getUserScheduleContext(context.userId, tz);
 
     // Build working hours context
-    const workingHoursContext = formatWorkingHoursForPrompt(workingHours, timezone);
+    const workingHoursContext = formatWorkingHoursForPrompt(workingHours, tz);
 
-    // Build prompt for GPT-4
-    const prompt = buildConflictResolutionPrompt(context, scheduleContext, workingHoursContext);
+    // Build prompt for GPT-4 with timezone-aware formatting
+    const prompt = await buildConflictResolutionPrompt(context, scheduleContext, workingHoursContext, tz);
 
-    // Call GPT-4 with structured output
+    // Model call with generateObject + zod (no JSON parsing needed)
     const schema = z.object({
       alternatives: z.array(z.object({
         startTime: z.string(), // ISO 8601
@@ -88,18 +98,29 @@ export async function generateAlternatives(
         score: z.number().min(0).max(100),
         dayType: z.enum(['weekday', 'weekend']),
         timeOfDay: z.enum(['morning', 'midday', 'afternoon', 'evening']),
-      })).min(2).max(3),
+      })).min(2).max(5), // Allow up to 5 for filtering
     });
 
-    const result = await generateText({
+    // Optional 5s timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      controller.abort();
+      logger.warn('⏰ AI alternative generation timeout', { correlationId });
+    }, 5000);
+
+    const result = await generateObject({
       model: openai('gpt-4-turbo'),
+      schema,
       prompt,
-      temperature: 0.7, // Balance creativity with consistency
+      temperature: 0.4, // Lower for consistency
       maxTokens: 800,
+      abortSignal: controller.signal,
     });
 
-    // Parse result
-    const parsed = schema.parse(JSON.parse(result.text));
+    clearTimeout(timeoutId);
+
+    // Parse result (already validated by zod)
+    const parsed = result.object;
 
     // Convert to AlternativeTimeSlot objects
     const alternatives: AlternativeTimeSlot[] = parsed.alternatives.map(alt => ({
@@ -111,29 +132,77 @@ export async function generateAlternatives(
       timeOfDay: alt.timeOfDay,
     }));
 
-    // Validate alternatives don't conflict
-    const validAlternatives = await validateAlternatives(alternatives, context);
+    // Validation: Check against schedule blocks with 15-min buffer
+    const BUFFER_MINUTES = 15;
+    const validAlternatives = alternatives.filter(alt => {
+      // Must differ from proposed window (with buffer)
+      const differentFromProposed = 
+        Math.abs(alt.startTime.getTime() - context.proposedStartTime.getTime()) > BUFFER_MINUTES * 60 * 1000 ||
+        Math.abs(alt.endTime.getTime() - context.proposedEndTime.getTime()) > BUFFER_MINUTES * 60 * 1000;
 
-    // Filter by working hours
-    const { isWithinWorkingHours } = await import('../utils/availability');
-    const inWorkingHours = validAlternatives.filter(alt => 
-      isWithinWorkingHours(alt.startTime, workingHours, timezone)
-    );
+      if (!differentFromProposed) {
+        logger.warn('⚠️ Alternative too similar to proposed time', {
+          correlationId,
+          altStart: alt.startTime.toISOString(),
+        });
+        return false;
+      }
 
-    if (inWorkingHours.length === 0 && validAlternatives.length > 0) {
-      logger.warn('⚠️ All AI alternatives outside working hours', {
-        userId: context.userId.substring(0, 8),
-        totalGenerated: validAlternatives.length,
-      });
-    }
+      // Check against all schedule blocks with buffer
+      for (const block of scheduleBlocks) {
+        const blockStart = new Date(block.start.getTime() - BUFFER_MINUTES * 60 * 1000);
+        const blockEnd = new Date(block.end.getTime() + BUFFER_MINUTES * 60 * 1000);
+        
+        // Check if alternative overlaps with buffered block
+        if (alt.startTime < blockEnd && alt.endTime > blockStart) {
+          logger.warn('⚠️ Alternative conflicts with schedule block', {
+            correlationId,
+            altStart: alt.startTime.toISOString(),
+            blockTitle: block.title,
+          });
+          return false;
+        }
+      }
 
-    logger.info('✅ Generated alternatives', {
-      count: inWorkingHours.length,
-      scores: inWorkingHours.map(a => a.score),
-      filteredByWorkingHours: validAlternatives.length - inWorkingHours.length,
+      // Validate both start AND end are within working hours
+      const startInHours = isWithinWorkingHours(alt.startTime, workingHours, tz);
+      const endInHours = isWithinWorkingHours(alt.endTime, workingHours, tz);
+
+      if (!startInHours || !endInHours) {
+        logger.warn('⚠️ Alternative outside working hours', {
+          correlationId,
+          altStart: alt.startTime.toISOString(),
+          startInHours,
+          endInHours,
+        });
+        return false;
+      }
+
+      return true;
     });
 
-    return inWorkingHours;
+    // Post-processing: De-duplicate, sort by score, cap at 3
+    const seen = new Set<string>();
+    const deduped = validAlternatives.filter(alt => {
+      const key = `${alt.startTime.toISOString()}_${alt.endTime.toISOString()}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    const sorted = deduped.sort((a, b) => b.score - a.score);
+    const final = sorted.slice(0, 3); // Cap at 3
+
+    logger.info('✅ Generated alternatives', {
+      correlationId,
+      aiGenerated: alternatives.length,
+      afterValidation: validAlternatives.length,
+      afterDedup: deduped.length,
+      final: final.length,
+      scores: final.map(a => a.score),
+    });
+
+    return final;
   } catch (error: any) {
     logger.error('❌ Failed to generate alternatives', {
       error: error.message,
@@ -168,22 +237,79 @@ function formatWorkingHoursForPrompt(workingHours: any, timezone: string): strin
 }
 
 /**
+ * Get schedule blocks for validation (next 7 days)
+ */
+async function getScheduleBlocks(
+  userId: string,
+  timezone: string
+): Promise<Array<{ start: Date; end: Date; title: string }>> {
+  try {
+    const now = new Date();
+    const sevenDaysOut = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+    const snapshot = await admin.firestore()
+      .collection('events')
+      .where('participants', 'array-contains', userId)
+      .where('startTime', '>=', admin.firestore.Timestamp.fromDate(now))
+      .where('startTime', '<=', admin.firestore.Timestamp.fromDate(sevenDaysOut))
+      .limit(100)
+      .get();
+
+    return snapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        start: data.startTime.toDate(),
+        end: data.endTime.toDate(),
+        title: data.title || 'Event',
+      };
+    });
+  } catch (error) {
+    logger.warn('⚠️ Failed to fetch schedule blocks', { error });
+    return [];
+  }
+}
+
+/**
+ * Format time with timezone
+ * Timezone-aware version
+ */
+function formatTime(date: Date, tz?: string): string {
+  if (!tz) {
+    return date.toLocaleString('en-US', {
+      weekday: 'short',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    });
+  }
+
+  return date.toLocaleString('en-US', {
+    weekday: 'short',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+    timeZone: tz,
+  });
+}
+
+/**
  * Build prompt for GPT-4 conflict resolution
  */
-function buildConflictResolutionPrompt(
+async function buildConflictResolutionPrompt(
   context: ConflictContext,
   scheduleContext: string,
-  workingHoursContext: string
-): string {
+  workingHoursContext: string,
+  tz: string
+): Promise<string> {
   const conflictList = context.conflictingEvents
-    .map(e => `- ${e.title}: ${formatTime(e.startTime)} - ${formatTime(e.endTime)}`)
+    .map(e => `- ${e.title}: ${formatTime(e.startTime, tz)} - ${formatTime(e.endTime, tz)}`)
     .join('\n');
 
   return `You are helping reschedule a tutoring session that conflicts with existing appointments.
 
 **Proposed Session:**
-- Start: ${formatTime(context.proposedStartTime)} (${context.timezone})
-- End: ${formatTime(context.proposedEndTime)} (${context.timezone})
+- Start: ${formatTime(context.proposedStartTime, tz)} (${tz})
+- End: ${formatTime(context.proposedEndTime, tz)} (${tz})
 - Duration: ${context.sessionDuration} minutes
 
 **Conflicting Events:**
@@ -423,8 +549,13 @@ export async function postConflictWarning(
   conversationId: string,
   conflictMessage: string,
   alternatives: AlternativeTimeSlot[],
+  userId?: string,
   eventId?: string
 ): Promise<string> {
+  // Deterministic conflict ID
+  const conflictId = eventId || `conflict_${conversationId.substring(0, 12)}_${Date.now().toString(36)}`;
+  const correlationId = conflictId.substring(0, 8);
+
   try {
     // Create assistant message with conflict metadata
     const messageRef = await admin.firestore()
@@ -435,6 +566,7 @@ export async function postConflictWarning(
         senderId: 'assistant',
         senderName: 'JellyDM Assistant',
         type: 'text',
+        messageType: 'conflict_warning',
         text: conflictMessage,
         clientTimestamp: admin.firestore.FieldValue.serverTimestamp(),
         serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
@@ -445,7 +577,7 @@ export async function postConflictWarning(
         meta: {
           role: 'assistant',
           conflict: {
-            conflictId: eventId || `conflict-${Date.now()}`,
+            conflictId,
             message: conflictMessage,
             suggestedAlternatives: alternatives.map(alt => ({
               startTime: admin.firestore.Timestamp.fromDate(alt.startTime),
@@ -454,9 +586,11 @@ export async function postConflictWarning(
             })),
           },
         },
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
     logger.info('✅ Posted conflict warning to conversation', {
+      correlationId,
       conversationId: conversationId.substring(0, 12),
       messageId: messageRef.id.substring(0, 8),
       alternativesCount: alternatives.length,
@@ -465,6 +599,7 @@ export async function postConflictWarning(
     return messageRef.id;
   } catch (error: any) {
     logger.error('❌ Failed to post conflict warning', {
+      correlationId,
       error: error.message,
       conversationId: conversationId.substring(0, 12),
     });
