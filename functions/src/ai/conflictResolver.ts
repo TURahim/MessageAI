@@ -30,6 +30,7 @@ export interface ConflictContext {
   userId: string;
   timezone: string;
   sessionDuration: number; // minutes
+  workingHours?: any; // User's availability preferences
 }
 
 export interface AlternativeTimeSlot {
@@ -46,11 +47,11 @@ export interface AlternativeTimeSlot {
  * 
  * Uses GPT-4 to intelligently suggest 2-3 alternative times that:
  * 1. Don't conflict with existing schedule
- * 2. Respect reasonable tutoring hours (9 AM - 6 PM)
+ * 2. Respect user's working hours
  * 3. Consider time of day preferences
  * 4. Provide helpful reasoning
  * 
- * @param context - Conflict context with schedule information
+ * @param context - Conflict context with schedule and availability
  * @returns 2-3 alternative time slots with reasoning
  */
 export async function generateAlternatives(
@@ -62,11 +63,21 @@ export async function generateAlternatives(
   });
 
   try {
+    // Get user's working hours and timezone
+    const { getUserWorkingHours } = await import('../utils/availability');
+    const { getUserTimezone } = await import('../utils/timezone');
+    
+    const timezone = await getUserTimezone(context.userId);
+    const workingHours = await getUserWorkingHours(context.userId);
+
     // Get user's schedule for context (next 7 days)
-    const scheduleContext = await getUserScheduleContext(context.userId, context.timezone);
+    const scheduleContext = await getUserScheduleContext(context.userId, timezone);
+
+    // Build working hours context
+    const workingHoursContext = formatWorkingHoursForPrompt(workingHours, timezone);
 
     // Build prompt for GPT-4
-    const prompt = buildConflictResolutionPrompt(context, scheduleContext);
+    const prompt = buildConflictResolutionPrompt(context, scheduleContext, workingHoursContext);
 
     // Call GPT-4 with structured output
     const schema = z.object({
@@ -103,12 +114,26 @@ export async function generateAlternatives(
     // Validate alternatives don't conflict
     const validAlternatives = await validateAlternatives(alternatives, context);
 
+    // Filter by working hours
+    const { isWithinWorkingHours } = await import('../utils/availability');
+    const inWorkingHours = validAlternatives.filter(alt => 
+      isWithinWorkingHours(alt.startTime, workingHours, timezone)
+    );
+
+    if (inWorkingHours.length === 0 && validAlternatives.length > 0) {
+      logger.warn('⚠️ All AI alternatives outside working hours', {
+        userId: context.userId.substring(0, 8),
+        totalGenerated: validAlternatives.length,
+      });
+    }
+
     logger.info('✅ Generated alternatives', {
-      count: validAlternatives.length,
-      scores: validAlternatives.map(a => a.score),
+      count: inWorkingHours.length,
+      scores: inWorkingHours.map(a => a.score),
+      filteredByWorkingHours: validAlternatives.length - inWorkingHours.length,
     });
 
-    return validAlternatives;
+    return inWorkingHours;
   } catch (error: any) {
     logger.error('❌ Failed to generate alternatives', {
       error: error.message,
@@ -121,11 +146,34 @@ export async function generateAlternatives(
 }
 
 /**
+ * Format working hours for AI prompt
+ */
+function formatWorkingHoursForPrompt(workingHours: any, timezone: string): string {
+  const days = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+  const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  
+  const lines: string[] = [];
+  
+  days.forEach((day, index) => {
+    const slots = workingHours[day];
+    if (slots && slots.length > 0) {
+      const ranges = slots.map((s: any) => `${s.start}–${s.end}`).join(', ');
+      lines.push(`${dayNames[index]}: ${ranges}`);
+    } else {
+      lines.push(`${dayNames[index]}: Not available`);
+    }
+  });
+
+  return lines.join('\n') + `\n(All times in ${timezone})`;
+}
+
+/**
  * Build prompt for GPT-4 conflict resolution
  */
 function buildConflictResolutionPrompt(
   context: ConflictContext,
-  scheduleContext: string
+  scheduleContext: string,
+  workingHoursContext: string
 ): string {
   const conflictList = context.conflictingEvents
     .map(e => `- ${e.title}: ${formatTime(e.startTime)} - ${formatTime(e.endTime)}`)
@@ -144,9 +192,12 @@ ${conflictList}
 **User's Schedule (Next 7 Days):**
 ${scheduleContext}
 
+**User's Working Hours:**
+${workingHoursContext}
+
 **Requirements:**
 1. Suggest 2-3 alternative times that DON'T conflict
-2. Stay within reasonable hours (9 AM - 6 PM)
+2. **CRITICAL:** Only suggest times within the user's working hours shown above
 3. Consider time of day:
    - Morning (9-11 AM): Good for focused work
    - Midday (11 AM - 2 PM): Peak hours, most preferred

@@ -89,6 +89,9 @@ export interface User {
   pushTokenUpdatedAt?: Timestamp; // When push token was last updated
   timezone?: string; // IANA timezone (e.g., "America/Toronto")
   locale?: string; // Optional for i18n
+  workingHours?: {
+    [day: string]: { start: string; end: string }[]; // e.g., { mon: [{start:"09:00", end:"17:00"}] }
+  };
   presence: UserPresence;
   createdAt?: Timestamp;
 }

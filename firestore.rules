@@ -16,10 +16,10 @@ service cloud.firestore {
          request.auth.uid in request.resource.data.get('friends', []))
       );
       
-      // Allow users to update their own timezone, locale, bio, displayName, photoURL
+      // Allow users to update their own timezone, locale, bio, displayName, photoURL, workingHours
       allow update: if request.auth.uid == uid &&
         request.resource.data.diff(resource.data).affectedKeys()
-        .hasOnly(['timezone', 'locale', 'displayName', 'bio', 'photoURL']);
+        .hasOnly(['timezone', 'locale', 'displayName', 'bio', 'photoURL', 'workingHours']);
       
       // Allow Cloud Functions to update pushToken (unauthenticated context)
       // This enables token cleanup and updates from server-side

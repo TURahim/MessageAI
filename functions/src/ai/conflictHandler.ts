@@ -48,7 +48,11 @@ export async function handleEventConflict(
   conversationId: string,
   timezone: string
 ): Promise<ConflictDetectionResult> {
+  const correlationId = `conflict_${Date.now().toString(36)}`;
+  const t_start = Date.now();
+
   logger.info('🔍 Checking for scheduling conflicts', {
+    correlationId,
     title: eventData.title,
     startTime: eventData.startTime.toISOString(),
     participants: eventData.participants.length,
@@ -63,13 +67,14 @@ export async function handleEventConflict(
     );
 
     if (conflictingEvents.length === 0) {
-      logger.info('✅ No conflicts detected');
+      logger.info('✅ No conflicts detected', { correlationId });
       return { hasConflict: false };
     }
 
     logger.warn('⚠️ Conflicts detected', {
+      correlationId,
       count: conflictingEvents.length,
-      titles: conflictingEvents.map(e => e.title),
+      titles: conflictingEvents.map(e => e.title).slice(0, 3), // Max 3 in log
     });
 
     // Calculate session duration
@@ -77,7 +82,12 @@ export async function handleEventConflict(
       (eventData.endTime.getTime() - eventData.startTime.getTime()) / (60 * 1000)
     );
 
+    // Get user's working hours for AI context
+    const { getUserWorkingHours } = await import('../utils/availability');
+    const workingHours = await getUserWorkingHours(eventData.createdBy);
+
     // Generate AI alternatives
+    const t_aiStart = Date.now();
     const context: ConflictContext = {
       proposedStartTime: eventData.startTime,
       proposedEndTime: eventData.endTime,
@@ -85,27 +95,72 @@ export async function handleEventConflict(
       userId: eventData.createdBy,
       timezone,
       sessionDuration: duration,
+      workingHours,
     };
 
     const alternatives = await generateAlternatives(context);
+    const t_aiEnd = Date.now();
 
     if (alternatives.length === 0) {
-      logger.warn('⚠️ No alternatives generated, using conflict message only');
+      logger.warn('⚠️ No alternatives generated, using conflict message only', {
+        correlationId,
+      });
     }
 
-    // Build conflict message
-    const conflictMessage = buildConflictMessage(
+    // 5. Build conflict message with user timezone
+    const conflictMessage = await buildConflictMessage(
       eventData.title,
       conflictingEvents,
-      alternatives
+      alternatives,
+      eventData.createdBy
     );
 
-    // Post conflict warning to conversation
-    await postConflictWarning(
-      conversationId,
-      conflictMessage,
-      alternatives
-    );
+    // 6. Idempotent conflict logging
+    const conflictLogId = `${correlationId}__${eventData.createdBy}`;
+    
+    try {
+      await admin.firestore()
+        .collection('conflict_logs')
+        .doc(conflictLogId)
+        .create({
+          userId: eventData.createdBy,
+          proposedTitle: eventData.title,
+          conflictCount: conflictingEvents.length,
+          alternativesGenerated: alternatives.length,
+          timestamp: admin.firestore.FieldValue.serverTimestamp(),
+        });
+    } catch (createError: any) {
+      // Already logged - skip posting duplicate warning
+      if (createError.code === 6 || createError.message?.includes('already exists')) {
+        logger.info('⏭️ Conflict already logged; skipping duplicate warning', {
+          correlationId,
+        });
+        return {
+          hasConflict: true,
+          conflictMessage,
+          alternatives,
+        };
+      }
+    }
+
+    // Post conflict warning to conversation (if not duplicate)
+    if (conversationId) {
+      await postConflictWarning(
+        conversationId,
+        conflictMessage,
+        alternatives,
+        eventData.createdBy
+      );
+    }
+
+    const t_end = Date.now();
+
+    logger.info('⏱️ Conflict handling complete', {
+      correlationId,
+      detectionDuration: t_aiStart - t_start,
+      aiDuration: t_aiEnd - t_aiStart,
+      totalDuration: t_end - t_start,
+    });
 
     return {
       hasConflict: true,
@@ -114,6 +169,7 @@ export async function handleEventConflict(
     };
   } catch (error: any) {
     logger.error('❌ Error handling conflict', {
+      correlationId,
       error: error.message,
       stack: error.stack,
     });
@@ -124,26 +180,56 @@ export async function handleEventConflict(
 
 /**
  * Find events that conflict with proposed time
+ * Optimized with time window and limits
  */
 async function findConflictingEvents(
   userId: string,
   startTime: Date,
   endTime: Date
 ): Promise<Array<{ id: string; title: string; startTime: Date; endTime: Date }>> {
+  const correlationId = `conflict_${Date.now().toString(36)}`;
+  
   try {
+    // 1. Query optimization: ±1 week window
+    const oneWeekBefore = new Date(startTime.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const oneWeekAfter = new Date(endTime.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+    // Firestore index required: events(participants ARRAY, endTime ASC, startTime ASC)
     const eventsSnapshot = await admin.firestore()
       .collection('events')
       .where('participants', 'array-contains', userId)
+      .where('endTime', '>=', admin.firestore.Timestamp.fromDate(oneWeekBefore))
+      .where('startTime', '<=', admin.firestore.Timestamp.fromDate(oneWeekAfter))
+      .limit(500) // Safety limit
       .get();
 
     const conflicts: Array<{ id: string; title: string; startTime: Date; endTime: Date }> = [];
 
     eventsSnapshot.docs.forEach(doc => {
       const data = doc.data();
+      
+      // 7. Safety check: Handle missing timestamps
+      if (!data.startTime || !data.endTime) {
+        logger.warn('⚠️ Event missing timestamps, skipping', {
+          correlationId,
+          eventId: doc.id,
+        });
+        return;
+      }
+
       const eventStart = data.startTime.toDate();
       const eventEnd = data.endTime.toDate();
 
-      // Check for overlap
+      // Validate dates
+      if (isNaN(eventStart.getTime()) || isNaN(eventEnd.getTime())) {
+        logger.error('❌ Invalid timestamps in event, skipping', {
+          correlationId,
+          eventId: doc.id,
+        });
+        return;
+      }
+
+      // Check for overlap (improved logic)
       if (timeRangesOverlap(startTime, endTime, eventStart, eventEnd)) {
         conflicts.push({
           id: doc.id,
@@ -154,15 +240,25 @@ async function findConflictingEvents(
       }
     });
 
+    logger.info('✅ Conflict search complete', {
+      correlationId,
+      eventsQueried: eventsSnapshot.docs.length,
+      conflictsFound: conflicts.length,
+    });
+
     return conflicts;
   } catch (error: any) {
-    logger.error('❌ Error finding conflicts', { error: error.message });
+    logger.error('❌ Error finding conflicts', {
+      correlationId,
+      error: error.message,
+    });
     return [];
   }
 }
 
 /**
  * Helper: Check if two time ranges overlap
+ * 3. Improved: Ignore boundary-only overlaps and zero-duration events
  */
 function timeRangesOverlap(
   start1: Date,
@@ -170,21 +266,51 @@ function timeRangesOverlap(
   start2: Date,
   end2: Date
 ): boolean {
+  // Ignore boundary-only overlaps (end == start is OK)
+  if (end1.getTime() === start2.getTime() || end2.getTime() === start1.getTime()) {
+    return false; // Back-to-back is not a conflict
+  }
+
+  // Ignore zero-duration events (start == end)
+  if (start1.getTime() === end1.getTime() || start2.getTime() === end2.getTime()) {
+    return false;
+  }
+
+  // Standard overlap check
   return start1 < end2 && start2 < end1;
 }
 
 /**
- * Build user-friendly conflict message
+ * Build user-friendly conflict message with timezone info
+ * 5. Localize with user timezone
  */
-function buildConflictMessage(
+async function buildConflictMessage(
   proposedTitle: string,
   conflicts: Array<{ title: string; startTime: Date; endTime: Date }>,
-  alternatives: AlternativeTimeSlot[]
-): string {
+  alternatives: AlternativeTimeSlot[],
+  userId: string
+): Promise<string> {
+  // Get user's timezone
+  const { getUserTimezone } = await import('../utils/timezone');
+  const userTimezone = await getUserTimezone(userId);
+
+  // Format times in user's timezone
+  const formatTimeInTz = (date: Date) => {
+    return date.toLocaleString('en-US', {
+      weekday: 'short',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+      timeZone: userTimezone,
+    });
+  };
+
   const conflictCount = conflicts.length;
+  
+  // 5. Limit to 2 conflicts with "and X more"
   const conflictList = conflicts
-    .slice(0, 2) // Show max 2 conflicts
-    .map(c => `"${c.title}" (${formatTime(c.startTime)})`)
+    .slice(0, 2)
+    .map(c => `"${c.title}" (${formatTimeInTz(c.startTime)})`)
     .join(' and ');
 
   const moreText = conflictCount > 2 ? ` and ${conflictCount - 2} more` : '';
@@ -194,23 +320,40 @@ function buildConflictMessage(
 
   if (alternatives.length > 0) {
     message += `I've found ${alternatives.length} alternative time${alternatives.length > 1 ? 's' : ''} that work better. `;
-    message += `Tap one below to reschedule automatically.`;
+    message += `Tap one below to reschedule automatically.\n\n`;
   } else {
-    message += `Please choose a different time that doesn't conflict with your schedule.`;
+    message += `Please choose a different time that doesn't conflict with your schedule.\n\n`;
   }
+
+  // Include timezone note
+  message += `(Times shown in ${userTimezone})`;
 
   return message;
 }
 
 /**
- * Format time for display
+ * Format time for display in user's timezone
+ * 2. Timezone-aware formatting
  */
-function formatTime(date: Date): string {
+async function formatTime(date: Date, userId?: string): Promise<string> {
+  if (!userId) {
+    return date.toLocaleString('en-US', {
+      weekday: 'short',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    });
+  }
+
+  const { getUserTimezone } = await import('../utils/timezone');
+  const userTimezone = await getUserTimezone(userId);
+
   return date.toLocaleString('en-US', {
     weekday: 'short',
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,
+    timeZone: userTimezone,
   });
 }
 
@@ -227,10 +370,14 @@ function formatTime(date: Date): string {
 export async function handleAlternativeSelection(
   conflictId: string,
   alternativeIndex: number,
-  conversationId: string
+  conversationId: string,
+  userId?: string
 ): Promise<boolean> {
+  const correlationId = conflictId.substring(0, 8);
+
   logger.info('👆 User selected alternative', {
-    conflictId: conflictId.substring(0, 8),
+    correlationId,
+    conflictId,
     alternativeIndex,
   });
 
@@ -246,7 +393,7 @@ export async function handleAlternativeSelection(
       .get();
 
     if (messagesSnapshot.empty) {
-      logger.error('❌ Conflict message not found');
+      logger.error('❌ Conflict message not found', { correlationId });
       return false;
     }
 
@@ -255,6 +402,7 @@ export async function handleAlternativeSelection(
 
     if (!alternatives || alternativeIndex >= alternatives.length) {
       logger.error('❌ Alternative not found', {
+        correlationId,
         alternativeIndex,
         availableCount: alternatives?.length || 0,
       });
@@ -265,15 +413,17 @@ export async function handleAlternativeSelection(
     const newStartTime = selectedAlt.startTime.toDate();
     const newEndTime = selectedAlt.endTime.toDate();
 
-    // If conflictId is an event ID, update that event
-    // Otherwise, this was a warning before creation - handle accordingly
-    if (conflictId.startsWith('event-')) {
-      const eventId = conflictId.replace('event-', '');
-      
-      // Update event to new time
+    // 4. Fix: Check if conflictId is an actual event ID
+    const eventDoc = await admin.firestore()
+      .collection('events')
+      .doc(conflictId)
+      .get();
+
+    if (eventDoc.exists) {
+      // Update existing event to new time
       await admin.firestore()
         .collection('events')
-        .doc(eventId)
+        .doc(conflictId)
         .update({
           startTime: admin.firestore.Timestamp.fromDate(newStartTime),
           endTime: admin.firestore.Timestamp.fromDate(newEndTime),
@@ -281,9 +431,14 @@ export async function handleAlternativeSelection(
         });
 
       logger.info('✅ Event rescheduled', {
-        eventId,
+        correlationId,
+        eventId: conflictId,
         newStartTime: newStartTime.toISOString(),
       });
+
+      // Get user timezone for confirmation message
+      const confirmUserId = userId || eventDoc.data()?.createdBy;
+      const timeStr = await formatTime(newStartTime, confirmUserId);
 
       // Post confirmation message
       await admin.firestore()
@@ -294,7 +449,8 @@ export async function handleAlternativeSelection(
           senderId: 'assistant',
           senderName: 'JellyDM Assistant',
           type: 'text',
-          text: `✅ Session rescheduled to ${formatTime(newStartTime)}`,
+          messageType: 'confirmation',
+          text: `✅ Session rescheduled to ${timeStr}`,
           clientTimestamp: admin.firestore.FieldValue.serverTimestamp(),
           serverTimestamp: admin.firestore.FieldValue.serverTimestamp(),
           status: 'sent',
@@ -304,12 +460,19 @@ export async function handleAlternativeSelection(
           meta: {
             role: 'assistant',
           },
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
         });
+    } else {
+      logger.warn('⚠️ Conflict ID is not an event; skipping reschedule', {
+        correlationId,
+        conflictId,
+      });
     }
 
     return true;
   } catch (error: any) {
     logger.error('❌ Error handling alternative selection', {
+      correlationId,
       error: error.message,
       stack: error.stack,
     });
@@ -333,24 +496,45 @@ export async function monitorScheduleConflicts(
   event2: { id: string; title: string };
   overlapMinutes: number;
 }>> {
+  const correlationId = `monitor_${userId.substring(0, 8)}`;
+  const t_start = Date.now();
+
   try {
     const now = new Date();
     const twoWeeksFromNow = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
 
+    // 6. Performance guard: limit results
     const eventsSnapshot = await admin.firestore()
       .collection('events')
       .where('participants', 'array-contains', userId)
       .where('startTime', '>=', admin.firestore.Timestamp.fromDate(now))
       .where('startTime', '<=', admin.firestore.Timestamp.fromDate(twoWeeksFromNow))
       .orderBy('startTime', 'asc')
+      .limit(500) // Safety limit
       .get();
 
-    const events = eventsSnapshot.docs.map(doc => ({
-      id: doc.id,
-      title: doc.data().title || 'Unnamed event',
-      startTime: doc.data().startTime.toDate(),
-      endTime: doc.data().endTime.toDate(),
-    }));
+    const events = eventsSnapshot.docs.map(doc => {
+      const data = doc.data();
+      
+      // 7. Safety check: validate timestamps
+      if (!data.startTime || !data.endTime) {
+        return null;
+      }
+
+      const startTime = data.startTime.toDate();
+      const endTime = data.endTime.toDate();
+
+      if (isNaN(startTime.getTime()) || isNaN(endTime.getTime())) {
+        return null;
+      }
+
+      return {
+        id: doc.id,
+        title: data.title || 'Unnamed event',
+        startTime,
+        endTime,
+      };
+    }).filter(e => e !== null) as Array<{ id: string; title: string; startTime: Date; endTime: Date }>;
 
     const conflicts: Array<{
       event1: { id: string; title: string };
@@ -358,11 +542,17 @@ export async function monitorScheduleConflicts(
       overlapMinutes: number;
     }> = [];
 
-    // Check for overlaps between all pairs
+    // 6. Optional: Sweep-line algorithm (O(n log n) instead of O(n²))
+    // For now, keep O(n²) but with early termination
     for (let i = 0; i < events.length; i++) {
       for (let j = i + 1; j < events.length; j++) {
         const event1 = events[i];
         const event2 = events[j];
+
+        // Early termination: if event2 starts after event1 ends + 1 day, skip rest
+        if (event2.startTime.getTime() > event1.endTime.getTime() + 24 * 60 * 60 * 1000) {
+          break;
+        }
 
         if (timeRangesOverlap(
           event1.startTime,
@@ -386,16 +576,26 @@ export async function monitorScheduleConflicts(
       }
     }
 
+    const t_end = Date.now();
+
     if (conflicts.length > 0) {
       logger.warn('⚠️ Schedule conflicts detected', {
+        correlationId,
         userId: userId.substring(0, 8),
         conflictCount: conflicts.length,
+        duration: t_end - t_start,
+      });
+    } else {
+      logger.info('✅ No schedule conflicts found', {
+        correlationId,
+        duration: t_end - t_start,
       });
     }
 
     return conflicts;
   } catch (error: any) {
     logger.error('❌ Error monitoring conflicts', {
+      correlationId,
       error: error.message,
     });
     return [];
