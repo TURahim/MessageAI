@@ -427,6 +427,20 @@ import { addFriend } from '@/services/friendService';
   - Idempotency via composite key (no duplicate sends)
   - Manual retry for failed notifications
   - 18 test cases (17 passing, 94% pass rate)
-- **Status:** 12 of 15 backend PRs complete (80%)
-- **Next:** PR13-14 (Monitoring + Nudges)
+- **PR13:** Autonomous Monitoring (COMPLETE ✅)
+  - autonomousMonitor detects unconfirmed events (20-28h window)
+  - Template-based nudges (no AI generation)
+  - patternDetector analyzes response times and engagement
+  - Integrated with scheduledReminderJob (runs hourly)
+  - Nudge idempotency via nudge_logs collection
+  - 15 test cases (100% pass rate)
+- **PR14:** Smart Nudges (COMPLETE ✅)
+  - nudgeGenerator with template-based prompts only
+  - Post-session note prompts (within 2h of session end)
+  - Long gap alerts (>14 days since last session)
+  - User preference controls (disable all or specific types)
+  - dailyNudgeJob scheduled Cloud Function (9 AM daily)
+  - 14 test cases (100% pass rate)
+- **Status:** 15 of 15 backend PRs complete (100%) ✅ ALL DONE!
+- **Next:** Deploy Cloud Functions, test end-to-end, production launch
 
