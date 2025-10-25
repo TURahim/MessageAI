@@ -36,6 +36,10 @@ jobs:
         working-directory: ./functions
         run: pnpm install --frozen-lockfile
 
+      - name: Build functions
+        working-directory: ./functions
+        run: pnpm run build
+
       - name: Run evaluation suite
         working-directory: ./monitoring/eval-suite
         env:

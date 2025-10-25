@@ -64,8 +64,6 @@ function percentile(arr: number[], p: number): number {
  * Loads test conversations from JSON file
  */
 function loadTestConversations(): TestConversations {
-  // Handle both CommonJS and ES modules
-  const __dirname = path.dirname(new URL(import.meta.url).pathname);
   const filePath = path.join(__dirname, 'test-conversations.json');
   const data = fs.readFileSync(filePath, 'utf-8');
   return JSON.parse(data);
@@ -264,8 +262,8 @@ async function main() {
 
 export { checkThresholds };
 
-// Run if called directly (check for ES modules)
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Run if called directly
+if (require.main === module) {
   main();
 }
 
