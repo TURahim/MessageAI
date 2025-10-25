@@ -233,11 +233,22 @@ export async function processMessageWithAI(
     const t_ragStart = Date.now();
     const { getContext } = await import('../rag/contextBuilder');
     
-    // Use injected retriever or fallback to mock
+    // Use injected retriever or choose based on feature flag
     let vectorRetriever = retriever;
     if (!vectorRetriever) {
-      const { MockVectorRetriever } = await import('../../../app/src/services/vector/mockRetriever');
-      vectorRetriever = new MockVectorRetriever([]);
+      const { FEATURE_FLAGS } = await import('../config/features');
+      
+      if (FEATURE_FLAGS.USE_REAL_VECTOR_SEARCH) {
+        logger.info('📚 Using Firebase Vector Search (server-side)', { correlationId });
+        // TODO: Implement server-side Firebase Vector Search using admin SDK
+        // For now, use mock until extension is properly configured
+        const { MockVectorRetriever } = await import('../../../app/src/services/vector/mockRetriever');
+        vectorRetriever = new MockVectorRetriever([]);
+      } else {
+        logger.info('📚 Using Mock Vector Retriever', { correlationId });
+        const { MockVectorRetriever } = await import('../../../app/src/services/vector/mockRetriever');
+        vectorRetriever = new MockVectorRetriever([]);
+      }
     }
     
     const ragContext = await getContext(

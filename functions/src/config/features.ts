@@ -25,5 +25,12 @@ export const FEATURE_FLAGS = {
    * Use pre-LLM heuristics for gating classification
    */
   USE_FAST_PATH_GATING: true,
+
+  /**
+   * Use real vector search (Firebase/Pinecone) instead of mock retriever
+   * Set to false during development or to revert to mock
+   * Requires: generateMessageEmbedding function enabled
+   */
+  USE_REAL_VECTOR_SEARCH: false, // Start with false until validated
 };
 

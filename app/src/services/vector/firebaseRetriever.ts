@@ -21,14 +21,14 @@
  * ```
  */
 
-import { collection, query, where, getDocs, writeBatch, doc, getDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, writeBatch, doc } from 'firebase/firestore';
 import type {
   VectorRetriever,
   VectorDocument,
   SearchOptions,
   SearchResult,
-} from '@/types/aiTypes';
-import { db } from '@/lib/firebase';
+} from '../../types/aiTypes';
+import { db } from '../../lib/firebase';
 
 export class FirebaseVectorRetriever implements VectorRetriever {
   private collectionName = 'vector_messages';
@@ -52,37 +52,59 @@ export class FirebaseVectorRetriever implements VectorRetriever {
   }
 
   async search(options: SearchOptions): Promise<SearchResult[]> {
-    const { conversationId, topK = 20, scoreThreshold = 0.5 } = options;
+    const { query: searchQuery, conversationId, topK = 20, scoreThreshold = 0.7 } = options;
 
-    // NOTE: This is a simplified version
-    // Firebase Vector Search extension provides a findNearest() function
-    // that we'll use once the extension is installed
-    // For now, implement basic filtering by conversationId
+    try {
+      // Fetch messages from the conversation, ordered by recency
+      // This is a basic implementation until Firebase Vector Search extension is active
+      let q = query(
+        collection(db, this.collectionName),
+        where('conversationId', '==', conversationId)
+      );
 
-    let q = query(collection(db, this.collectionName));
+      const snapshot = await getDocs(q);
+      
+      if (snapshot.empty) {
+        console.log('📚 No vectors found for conversation');
+        return [];
+      }
 
-    // Filter by conversationId if provided
-    if (conversationId) {
-      q = query(q, where('metadata.conversationId', '==', conversationId));
+      // Simple text matching as fallback (until vector search extension is enabled)
+      // In production, this would be replaced with cosine similarity search
+      const searchLower = searchQuery.toLowerCase();
+      const results: SearchResult[] = snapshot.docs
+        .map(doc => {
+          const data = doc.data();
+          const content = data.textSnippet || '';
+          const contentLower = content.toLowerCase();
+          
+          // Simple relevance score based on keyword matching
+          const words = searchLower.split(' ').filter((w: string) => w.length > 2);
+          const matchCount = words.filter((word: string) => contentLower.includes(word)).length;
+          const score = words.length > 0 ? matchCount / words.length : 0;
+          
+          return {
+            id: doc.id,
+            content: content,
+            score: score,
+            metadata: data.metadata || {
+              conversationId: data.conversationId,
+              senderId: data.senderId,
+              timestamp: data.timestamp,
+            },
+          };
+        })
+        .filter(r => r.score >= scoreThreshold)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, topK);
+
+      console.log(`📚 Retrieved ${results.length} documents (keyword match fallback)`);
+      
+      return results;
+    } catch (error) {
+      console.error('Firebase vector search failed:', error);
+      return [];
     }
-
-    const snapshot = await getDocs(q);
-    
-    // In production with Vector Search extension, you'd call:
-    // const results = await vectorSearch(queryEmbedding, topK, scoreThreshold);
-    
-    // For now, return documents without true similarity scoring
-    const results: SearchResult[] = snapshot.docs
-      .map(doc => ({
-        id: doc.id,
-        content: doc.data().content,
-        score: 0.8, // Placeholder - would be cosine similarity from vector search
-        metadata: doc.data().metadata,
-      }))
-      .filter(r => r.score >= scoreThreshold)
-      .slice(0, topK);
-
-    return results;
   }
 
   async delete(ids: string[]): Promise<{ count: number }> {

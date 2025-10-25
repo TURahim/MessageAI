@@ -438,19 +438,53 @@ export const generateMessageEmbedding = onDocumentCreated({
   }
 
   try {
+    // IDEMPOTENCY: Check if embedding already exists
+    const existingVector = await admin.firestore()
+      .collection('vector_messages')
+      .doc(messageId)
+      .get();
+    
+    if (existingVector.exists) {
+      const existing = existingVector.data();
+      
+      // Only regenerate if text changed
+      if (existing && existing.textSnippet === messageData.text.substring(0, 100)) {
+        logger.info('✅ Embedding already exists, skipping', {
+          messageId: messageId.substring(0, 8),
+        });
+        return;
+      }
+    }
+    
+    // PRIVACY: Redact PII before embedding
+    const { redactPII } = await import('./utils/piiRedactor');
+    const sanitizedText = redactPII(messageData.text);
+    
+    // Truncate to 500 chars (cost control + privacy)
+    const textToEmbed = sanitizedText.substring(0, 500);
+    
     // Generate embedding
-    const embedding = await embedMessage(messageData.text);
+    const embedding = await embedMessage(textToEmbed);
+    
+    // COST TRACKING: Log token usage
+    const tokenCount = Math.ceil(textToEmbed.length / 4); // Rough estimate
+    const estimatedCost = (tokenCount / 1000000) * 0.00002; // $0.02 per 1M tokens
+    
+    logger.info('💰 Embedding generated', {
+      messageId: messageId.substring(0, 8),
+      tokens: tokenCount,
+      cost: estimatedCost,
+      sanitized: sanitizedText !== messageData.text,
+    });
 
-    // Store in vector_messages collection
+    // Store: snippet + embedding (not full text for privacy)
     await admin.firestore().collection('vector_messages').doc(messageId).set({
-      content: messageData.text,
+      messageId,
+      conversationId,
+      textSnippet: textToEmbed.substring(0, 100), // Short preview only
       embedding,
-      metadata: {
-        conversationId,
-        senderId: messageData.senderId,
-        timestamp: messageData.serverTimestamp || admin.firestore.FieldValue.serverTimestamp(),
-        messageType: messageData.type,
-      },
+      senderId: messageData.senderId,
+      timestamp: messageData.serverTimestamp || admin.firestore.FieldValue.serverTimestamp(),
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
