@@ -291,45 +291,9 @@ async function buildConflictMessage(
   alternatives: AlternativeTimeSlot[],
   userId: string
 ): Promise<string> {
-  // Get user's timezone
-  const { getUserTimezone } = await import('../utils/timezone');
-  const userTimezone = await getUserTimezone(userId);
-
-  // Format times in user's timezone
-  const formatTimeInTz = (date: Date) => {
-    return date.toLocaleString('en-US', {
-      weekday: 'short',
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true,
-      timeZone: userTimezone,
-    });
-  };
-
-  const conflictCount = conflicts.length;
-  
-  // 5. Limit to 2 conflicts with "and X more"
-  const conflictList = conflicts
-    .slice(0, 2)
-    .map(c => `"${c.title}" (${formatTimeInTz(c.startTime)})`)
-    .join(' and ');
-
-  const moreText = conflictCount > 2 ? ` and ${conflictCount - 2} more` : '';
-
-  let message = `⚠️ Scheduling conflict detected for "${proposedTitle}".\n\n`;
-  message += `This overlaps with ${conflictList}${moreText}.\n\n`;
-
-  if (alternatives.length > 0) {
-    message += `I've found ${alternatives.length} alternative time${alternatives.length > 1 ? 's' : ''} that work better. `;
-    message += `Tap one below to reschedule automatically.\n\n`;
-  } else {
-    message += `Please choose a different time that doesn't conflict with your schedule.\n\n`;
-  }
-
-  // Include timezone note
-  message += `(Times shown in ${userTimezone})`;
-
-  return message;
+  // Ultra-compact message - details shown in ConflictWarning card
+  // Avoid duplication since the card component will display all details
+  return `⚠️ Scheduling conflict - see alternatives below`;
 }
 
 /**

@@ -1,87 +1,123 @@
-Stabilize Multi-Action Scheduling Flow
+Simplify Conflict Resolution Card (V1.1)
 
 Goal
-Make the “schedule from chat” flow reliable and polished when a user says things like “Physics lesson next Sunday 5 pm”. The system must (a) create exactly one event or task, (b) post exactly one confirmation message, and (c) cleanly replace the loading card. No duplicates. No stuck placeholders.
+Make the conflict card lean, readable, and tappable. Remove wall-of-text, reduce repetition, and emphasize quick resolution with 1–3 clear alternatives. Keep it consistent with our assistant card style.
 
-Problems to fix
+Problems with current UI
 
-Misclassification (“reminder” vs “scheduling”)
-Messages that mention the word “reminder” are being classified as reminder even when they clearly contain a date/time + lesson intent. This routes the model to the wrong tools (task/reminder) instead of the scheduling stack.
+Too much repeated copy (“conflict detected…” shown twice; long paragraphs).
 
-Duplicate actions in Round 2
-With maxSteps: 3 the model sometimes calls multiple write tools in one pass (e.g., task.create twice + messages.post_system twice), producing duplicate cards.
+Heavy color block + multiple emojis → visual noise.
 
-Loading card never replaced
-The placeholder remains because the app can’t reliably find/replace it (and an index error surfaced). Result: user sees a stuck “Preparing your event…” card in addition to final messages.
+Alternatives are dense list rows; high cognitive load.
 
-Required outcomes
+Timezone note + counts + titles compete with the primary action.
 
-A message like “physics lesson next Sunday 5 pm” is treated as scheduling, even if it contains “reminder” language.
+Desired UX (high level)
 
-For each user intent, the system performs one and only one persistent write (event or task) and one and only one confirmation message.
+Single concise header with icon + title.
 
-The loading card is always replaced (or removed) when the final assistant message arrives.
+One-sentence context (overlaps with another session). No repeated paragraphs.
 
-No duplicate cards or confirmations appear, regardless of retries, fallbacks, or multi-step orchestration.
+Compact alternatives presented as chips or slim cards (max 3), each with start–end time and a tiny subline reason.
 
-Product constraints & guidance (implementation left to you)
-A) Classification hardening (Gating → Router)
+Secondary actions: “See more times” (opens picker), “Keep current time”.
 
-Add priority rules so “date/time + session/lesson/review” maps to scheduling even if the word “reminder” appears.
+Subtle timezone hint at the bottom, not in the body copy.
 
-Add a post-gating heuristic: if text contains scheduling keywords + a parseable time, force route to scheduling.
+No duplication of text inside the bordered panel and the parent message; pick one surface.
 
-Include a few test cases that reflect tutoring phrasing (“remind me we have a lesson on Sunday at 5pm” → scheduling).
+Content & hierarchy (copy not final)
 
-B) Tool scope & step policy
+Header: ⚠️ Conflict detected
 
-For scheduling, expose only: time.parse, schedule.create_event, messages.post_system.
+Body (one sentence): This overlaps with another session. Pick a new time below.
 
-For reminder, expose only: task.create, reminders.schedule, messages.post_system.
+Alternatives (3 max):
 
-In Round 2, keep multi-step capacity but enforce “one write tool per round”. Any subsequent write attempts in the same round become no-ops. Log and continue.
+Wed • 5:00–6:00 PM
+Same time tomorrow
 
-C) Idempotency & de-dup (server-side)
+Thu • 10:00–11:00 AM
+Morning focus slot
 
-Introduce an idempotency key for writes (e.g., hash of conversationId + normalizedTitle + ISO time).
+Fri • 2:00–3:00 PM
+Avoids back-to-back
 
-Before creating, check for an existing record with the same key; if found, skip creation and only ensure a single confirmation message exists.
+Actions:
 
-Use a similar check to prevent duplicate messages.post_system for the same entity (e.g., meta.eventId/meta.taskId + type:"confirmation").
+Primary: See more times (ghost button, right aligned)
 
-D) Loading card lifecycle
+Secondary: Keep current (link)
 
-Assign a correlationId per intent.
+Footnote (muted): Times shown in America/Toronto
 
-When showing the placeholder, store its messageId and correlationId.
+Visual guidelines (don’t hardcode; use design tokens)
 
-The final assistant message should carry the same correlationId, allowing a direct replace (don’t rely on a Firestore query to locate the placeholder).
+Container: Use the standard AI assistant card pattern (same radius, padding, shadow). No nested orange panel.
 
-If replacement fails, server removes the placeholder after posting the final message as a backstop.
+Iconography: One icon only (warning).
 
-Resolve the Firestore index error by defining the needed composite index or by eliminating the dependency on that query entirely via correlationId.
+Typography:
 
-E) Prompt & orchestration nudge (not rigid)
+Header: same style as assistant card title (semibold).
 
-Update the scheduling orchestration prompt with a short workflow checklist:
-time.parse → schedule.create_event → messages.post_system (confirmation)
-and the instruction “Stop only after these are complete.”
+Body: two short lines max.
 
-Keep Round 2 maxSteps high enough to do both actions, but rely on the write-once guard to prevent duplication.
+Chips/slim cards: strong time line + muted reason line.
+
+Color:
+
+Neutral background (assistant card color).
+
+Warning icon/tint minimal (no full warning background).
+
+Density:
+
+Aim for ~3 visible items without scrolling on a small phone.
+
+Keep vertical rhythm tight; avoid large gaps.
+
+Interaction & states
+
+Loading: Render shell immediately (header + 3 placeholder chips with shimmer).
+
+Filled: Hydrate chips with times and reason.
+
+Empty: If no valid alternatives, show: No good matches right now. → Button: See more times.
+
+Error: Couldn’t load alternatives. → Retry.
+
+Tap behavior:
+
+On chip tap → optimistic update to new time, disable other chips, swap to success state: Rescheduled to Wed 5:00–6:00 PM with ✅.
+
+Post a single confirmation message to the chat.
+
+Undo: Show a 5–10s toast/snack: Rescheduled. Undo (one tap).
+
+A11y: Large tap targets; VoiceOver labels like “Select Wednesday five to six PM — same time tomorrow”.
+
+System considerations (not implementation details)
+
+Idempotency: Ignore double taps; ensure only one reschedule/write.
+
+No duplication: Don’t echo the same paragraph above and inside the card.
+
+Privacy: Never reveal other participant names in multi-chat conflicts; use “another session”.
+
+Telemetry: Log conflict_card_shown, alt_loaded, alt_selected, see_more_times_clicked, keep_current_clicked, undo_reschedule. Include latency to selection.
 
 Acceptance criteria
 
-Routing: Phrases like “reminder we have a lesson Sunday 5pm” route to scheduling, not reminder.
+ Card is reduced to one header, one short line, and ≤3 compact alternatives.
 
-Writes: Exactly one event (or task) is created per intent, even with retries or multi-step chains.
+ Visual style matches assistant cards; no large warning panels; single icon.
 
-Confirmation: Exactly one confirmation message is posted per created entity.
+ Tapping an alternative reschedules once, disables others, and shows success within the same card.
 
-Placeholder: The loading card always disappears (or is replaced) when the final message appears. No stuck placeholders.
+ “See more times” opens the broader picker; “Keep current” exits cleanly.
 
-Resilience: No duplicates in logs across Round 1/2, even with maxSteps: 3.
+ Timezone note is subtle and placed at the bottom.
 
-No index failures: Either the correct Firestore index exists, or replacement doesn’t depend on a query that needs a new index.
-
-Instruction for Cursor:
-Refactor the classification, tool policy, idempotency, and placeholder replacement logic to meet the outcomes above. Favor simple, robust server-side guards over complex client queries. Keep UX identical to our assistant card style and ensure the conversation feels seamless.
+ All states (loading/filled/empty/error) are supported without layout jumpiness.
