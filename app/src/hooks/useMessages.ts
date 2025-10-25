@@ -13,7 +13,7 @@ import {
 import { db } from '@/lib/firebase';
 import { Message } from '@/types/message';
 
-const MESSAGES_PER_PAGE = 20;
+const MESSAGES_PER_PAGE = 50;
 
 interface UseMessagesResult {
   messages: Message[];
