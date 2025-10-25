@@ -128,8 +128,11 @@ export default function ChatRoomScreen() {
     // Merge: Firestore messages + pending optimistic messages
     const merged = [...messages, ...pendingOptimistic];
     
+    // Filter out system action messages (they're processed by backend, not shown to user)
+    const filtered = merged.filter(m => !m.meta?.action);
+    
     // Sort by timestamp (clientTimestamp for optimistic, serverTimestamp for synced)
-    merged.sort((a, b) => {
+    filtered.sort((a, b) => {
       const aTimestamp = a.serverTimestamp || a.clientTimestamp;
       const bTimestamp = b.serverTimestamp || b.clientTimestamp;
       
@@ -146,7 +149,7 @@ export default function ChatRoomScreen() {
       console.log(`📦 Showing ${pendingOptimistic.length} optimistic message(s) in UI`);
     }
     
-    return merged;
+    return filtered;
   }, [messages, optimisticMessages]);
 
   // Derive thread status for RSVP chip (must be after allMessages is computed)

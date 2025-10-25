@@ -41,6 +41,7 @@ export interface ConflictMeta {
 export interface MessageMeta {
   role?: 'assistant' | 'system' | 'user';
   type?: 'event' | 'deadline' | 'ai_loading'; // Type of assistant message/card
+  action?: string; // System actions (reschedule_event, etc.) - filtered from UI
   eventId?: string;
   event?: EventMeta;
   deadlineId?: string;
