@@ -72,7 +72,7 @@ async function ensureUserDocument(user: any) {
   };
 
   if (!userDoc.exists()) {
-    // Detect timezone for new users
+    // NEW USER: Detect timezone
     const detectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Toronto';
     
     // Create new document
@@ -83,12 +83,26 @@ async function ensureUserDocument(user: any) {
       timezone: detectedTimezone,
       createdAt: serverTimestamp(),
     });
-    console.log('✅ Created user document for:', user.uid);
+    console.log('✅ Created user document with timezone:', detectedTimezone);
   } else {
-    // Update existing document (in case email/displayName/photo changed)
-    // Don't overwrite bio or friends if they already exist
-    await setDoc(userRef, userData, { merge: true });
-    console.log('✅ Updated user document for:', user.uid);
+    // EXISTING USER: Backfill timezone if missing (write once)
+    const existingData = userDoc.data();
+    
+    if (!existingData.timezone) {
+      const detectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Toronto';
+      
+      await setDoc(userRef, {
+        ...userData,
+        timezone: detectedTimezone,
+      }, { merge: true });
+      
+      console.log('✅ Backfilled timezone for legacy user:', detectedTimezone);
+    } else {
+      // Update existing document (in case email/displayName/photo changed)
+      // Don't overwrite bio, friends, or timezone if they already exist
+      await setDoc(userRef, userData, { merge: true });
+      console.log('✅ Updated user document for:', user.uid);
+    }
   }
 }
 

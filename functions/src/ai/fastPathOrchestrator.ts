@@ -51,8 +51,9 @@ export async function scheduleFastPath(
   });
 
   try {
-    // Default timezone (TODO: Fetch from user preferences)
-    const timezone = 'America/New_York';
+    // Get user's timezone from preferences
+    const { getUserTimezone } = await import('../utils/timezone');
+    const timezone = await getUserTimezone(message.senderId);
 
     // Step 1: Parse time deterministically with chrono-node
     const t_parseStart = Date.now();
@@ -140,10 +141,10 @@ export async function scheduleFastPath(
 
     // Step 5: Post templated confirmation (no LLM!) - only if NO conflict
     const t_confirmStart = Date.now();
-    const confirmationText = formatEventConfirmation(
+    const confirmationText = await formatEventConfirmation(
       title,
       parseResult.startTime!,
-      timezone
+      message.senderId // Pass userId for per-viewer timezone formatting
     );
 
     await executeTool(

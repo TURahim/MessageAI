@@ -3,24 +3,27 @@
  * 
  * Templated responses for common AI actions
  * Eliminates LLM calls for predictable confirmations
+ * 
+ * POLICY: All times rendered per-viewer using formatInUserTimezone
  */
 
-import { DateTime } from 'luxon';
+import { formatInUserTimezone } from '../utils/timezoneUtils';
 
 /**
  * Format event scheduling confirmation
  * Template: "I've scheduled {title} for {day}, {month} {date} at {time}."
+ * 
+ * @param title - Event title
+ * @param startTimeUTC - ISO UTC string
+ * @param userId - User ID for timezone formatting
  */
-export function formatEventConfirmation(
+export async function formatEventConfirmation(
   title: string,
   startTimeUTC: string,
-  timezone: string
-): string {
-  const dt = DateTime.fromISO(startTimeUTC).setZone(timezone);
-  const formatted = dt.toFormat('EEE, MMM d');
-  const time = dt.toFormat('h:mm a');
-  
-  return `I've scheduled ${title} for ${formatted} at ${time}.`;
+  userId: string
+): Promise<string> {
+  const formatted = await formatInUserTimezone(startTimeUTC, userId, 'long');
+  return `I've scheduled ${title} for ${formatted}.`;
 }
 
 /**
@@ -45,6 +48,8 @@ export function formatAcceptNotification(
 
 /**
  * Format conflict warning with alternatives
+ * NOTE: Conflict warnings are now rendered client-side in ConflictWarning component
+ * This function is deprecated - keeping for backward compatibility
  */
 export function formatConflictWarning(
   title: string,
@@ -53,30 +58,9 @@ export function formatConflictWarning(
   alternatives: Array<{ startTime: string; endTime: string; reason?: string }>,
   timezone: string
 ): string {
-  const conflictList = conflictingEvents
-    .slice(0, 2)
-    .map(evt => {
-      const dt = DateTime.fromJSDate(evt.startTime).setZone(timezone);
-      return `• ${evt.title} (${dt.toFormat('h:mm a')})`;
-    })
-    .join('\n');
-
-  const altList = alternatives
-    .slice(0, 3)
-    .map((alt, i) => {
-      const dt = DateTime.fromISO(alt.startTime).setZone(timezone);
-      const reason = alt.reason ? ` - ${alt.reason}` : '';
-      return `${i + 1}. ${dt.toFormat('EEE, MMM d')} at ${dt.toFormat('h:mm a')}${reason}`;
-    })
-    .join('\n');
-
-  return `⚠️ Scheduling conflict detected for "${title}"
-
-Your proposed time conflicts with:
-${conflictList}
-
-Suggested alternatives:
-${altList}`;
+  // Conflicts are now shown via ConflictWarning component (per-viewer rendering)
+  // This function returns empty string - component handles all formatting
+  return '';
 }
 
 /**
@@ -92,15 +76,12 @@ export function formatCancellationConfirmation(
 /**
  * Format reschedule confirmation
  */
-export function formatRescheduleConfirmation(
+export async function formatRescheduleConfirmation(
   title: string,
   newStartTimeUTC: string,
-  timezone: string
-): string {
-  const dt = DateTime.fromISO(newStartTimeUTC).setZone(timezone);
-  const formatted = dt.toFormat('EEE, MMM d');
-  const time = dt.toFormat('h:mm a');
-  
-  return `🔄 I've rescheduled ${title} to ${formatted} at ${time}.`;
+  userId: string
+): Promise<string> {
+  const formatted = await formatInUserTimezone(newStartTimeUTC, userId, 'long');
+  return `🔄 I've rescheduled ${title} to ${formatted}.`;
 }
 

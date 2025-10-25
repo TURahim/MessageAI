@@ -433,15 +433,15 @@ export async function handleAlternativeSelection(
 
       // Get event details for confirmation
       const eventData = eventDoc.data();
-      const timezone = 'America/New_York'; // TODO: Get from user settings
       const title = eventData?.title || 'Session';
+      const confirmUserId = userId || eventData?.createdBy;
 
-      // Use template for confirmation
+      // Use template for confirmation (per-viewer timezone formatting)
       const { formatRescheduleConfirmation } = await import('./messageTemplates');
-      const confirmationText = formatRescheduleConfirmation(
+      const confirmationText = await formatRescheduleConfirmation(
         title,
         newStartTime.toISOString(),
-        timezone
+        confirmUserId
       );
 
       // Post confirmation message

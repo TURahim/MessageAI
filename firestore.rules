@@ -84,9 +84,13 @@ service cloud.firestore {
         request.auth.uid in request.resource.data.participants &&
         request.auth.uid == request.resource.data.createdBy;
       
-      // Rule 3: Only creator can update event
-      allow update: if request.auth != null &&
-        request.auth.uid == resource.data.createdBy;
+      // Rule 3: Creator OR participants can update (for RSVP, conflict resolution)
+      allow update: if request.auth != null && (
+        request.auth.uid == resource.data.createdBy ||
+        (request.auth.uid in resource.data.participants &&
+         request.resource.data.diff(resource.data).affectedKeys()
+         .hasOnly(['rsvps', 'status', 'hasConflict', 'userAcceptedConflict', 'updatedAt']))
+      );
       
       // Rule 4: Only creator can delete event
       allow delete: if request.auth != null &&
@@ -145,5 +149,30 @@ service cloud.firestore {
       allow read: if request.auth != null && request.auth.token.admin == true;
       allow write: if false; // Only Cloud Functions via admin SDK
     }
+
+    // --- CONFLICT_LOGS COLLECTION ---
+    // Analytics for conflict detection and resolution
+    match /conflict_logs/{logId} {
+      // Users can read conflicts for their own events
+      allow read: if request.auth != null && 
+        request.auth.uid == resource.data.userId;
+      
+      // Only Cloud Functions can write (via admin SDK)
+      allow write: if false;
+    }
+
+    // --- RESCHEDULE_OPERATIONS COLLECTION ---
+    // Idempotency tracking for reschedule actions
+    match /reschedule_operations/{opId} {
+      // Users can read their own reschedule operations (for debugging)
+      allow read: if request.auth != null && 
+        request.auth.uid == resource.data.userId;
+      
+      // Only Cloud Functions can write (via admin SDK)
+      allow write: if false;
+    }
+
+    // NOTE: Cloud Functions using admin SDK bypass all security rules
+    // This allows server-side logic to write to any collection securely
   }
 }

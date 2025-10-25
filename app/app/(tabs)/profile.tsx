@@ -8,11 +8,16 @@ import { updateProfile } from 'firebase/auth';
 import { doc, updateDoc, getDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { auth, db, storage } from '@/lib/firebase';
+import TimezonePicker from '@/components/TimezonePicker';
 
 export default function ProfileScreen() {
   const { user } = useAuth();
   const [editing, setEditing] = useState(false);
   const [displayName, setDisplayName] = useState(user?.displayName || '');
+  const [timezone, setTimezone] = useState(
+    Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Toronto'
+  );
+  const [showTimezonePicker, setShowTimezonePicker] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [firestoreProfile, setFirestoreProfile] = useState<any>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -43,6 +48,12 @@ export default function ProfileScreen() {
           const data = userDoc.data();
           console.log('✅ Firestore profile loaded:', data);
           setFirestoreProfile(data);
+          
+          // Load timezone from Firestore profile
+          if (data.timezone) {
+            setTimezone(data.timezone);
+          }
+          
           setFetchError(null);
         } else {
           console.warn('⚠️ User document does not exist in Firestore');
@@ -88,6 +99,8 @@ export default function ProfileScreen() {
       const userRef = doc(db, 'users', user.uid);
       await updateDoc(userRef, {
         displayName: displayName.trim(),
+        timezone: timezone,
+        updatedAt: new Date(),
       });
 
       setEditing(false);
@@ -206,11 +219,36 @@ export default function ProfileScreen() {
         )}
       </View>
 
+      {/* Timezone */}
+      <View style={styles.infoContainer}>
+        <Text style={styles.label}>Timezone:</Text>
+        {editing ? (
+          <TouchableOpacity
+            style={styles.timezoneButton}
+            onPress={() => setShowTimezonePicker(true)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.timezoneText}>{timezone}</Text>
+            <Text style={styles.changeText}>Change →</Text>
+          </TouchableOpacity>
+        ) : (
+          <Text style={styles.value}>{timezone}</Text>
+        )}
+      </View>
+
       {/* Email (read-only) */}
       <View style={styles.infoContainer}>
         <Text style={styles.label}>Email:</Text>
         <Text style={styles.value}>{profileEmail}</Text>
       </View>
+      
+      {/* TimezonePicker Modal */}
+      <TimezonePicker
+        visible={showTimezonePicker}
+        selectedTimezone={timezone}
+        onSelect={setTimezone}
+        onClose={() => setShowTimezonePicker(false)}
+      />
 
       {/* Edit/Save Button */}
       {editing ? (
@@ -357,6 +395,26 @@ const styles = StyleSheet.create({
     color: '#FF3B30',
     fontSize: 14,
     textAlign: 'center',
+  },
+  timezoneButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#F9F9F9',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+  },
+  timezoneText: {
+    fontSize: 16,
+    color: '#000',
+    flex: 1,
+  },
+  changeText: {
+    fontSize: 14,
+    color: '#007AFF',
+    fontWeight: '500',
   },
 });
 
