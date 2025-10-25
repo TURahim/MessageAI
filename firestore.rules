@@ -2,34 +2,57 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{db}/documents {
 
+    // --- HELPER FUNCTIONS ---
+    function getUserRole() {
+      return get(/databases/$(db)/documents/users/$(request.auth.uid)).data.role;
+    }
+    
+    function isTutor() {
+      return getUserRole() == 'tutor';
+    }
+    
+    function isParent() {
+      return getUserRole() == 'parent';
+    }
+    
+    function hasRole() {
+      return getUserRole() in ['tutor', 'parent'];
+    }
+
     // --- USERS COLLECTION ---
     match /users/{uid} {
       allow read: if request.auth != null; // any signed-in user can see others
       allow create, delete: if request.auth != null && request.auth.uid == uid; // only self
       
-      // Allow updates with specific rules for friends, pushToken, and timezone
-      allow update: if request.auth != null && (
-        // User can update their own document
-        request.auth.uid == uid ||
-        // OR allow updating ONLY friends field when adding/removing self
-        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['friends']) &&
-         request.auth.uid in request.resource.data.get('friends', []))
-      );
+      // Allow users to update their own document (any fields)
+      allow update: if request.auth != null && request.auth.uid == uid;
       
-      // Allow users to update their own timezone, locale, bio, displayName, photoURL, workingHours
-      allow update: if request.auth.uid == uid &&
-        request.resource.data.diff(resource.data).affectedKeys()
-        .hasOnly(['timezone', 'locale', 'displayName', 'bio', 'photoURL', 'workingHours']);
+      // Allow tutors to remove themselves from a parent's linkedTutorIds
+      // (When a tutor disconnects from a parent)
+      allow update: if request.auth != null &&
+        isTutor() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['linkedTutorIds']) &&
+        !(request.auth.uid in request.resource.data.get('linkedTutorIds', [])) &&
+        request.auth.uid in resource.data.get('linkedTutorIds', []);
+      
+      // Allow users to block others (adds to blockedUserIds of both users)
+      allow update: if request.auth != null &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['blockedUserIds']) &&
+        (request.resource.data.get('blockedUserIds', []).size() == resource.data.get('blockedUserIds', []).size() + 1);
+      
+      // Allow other users to add/remove themselves from friends array
+      allow update: if request.auth != null &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['friends']) &&
+        request.auth.uid in request.resource.data.get('friends', []);
       
       // Allow Cloud Functions to update pushToken (unauthenticated context)
-      // This enables token cleanup and updates from server-side
       allow update: if request.resource.data.diff(resource.data).affectedKeys()
         .hasOnly(['pushToken', 'pushTokenUpdatedAt']);
     }
 
     // --- CONVERSATIONS COLLECTION ---
     match /conversations/{cid} {
-      // Allow authenticated users to read conversations (even if document doesn't exist)
+      // Allow authenticated users with roles to read conversations (even if document doesn't exist)
       // This allows checking if conversation exists before creating
       allow get: if request.auth != null;
       
@@ -37,8 +60,9 @@ service cloud.firestore {
       allow list: if request.auth != null && 
         request.auth.uid in resource.data.participants;
       
-      // Allow authenticated users to create conversations if they're in participants
+      // Allow tutors and parents to create conversations if they're in participants
       allow create: if request.auth != null && 
+        hasRole() &&
         request.auth.uid in request.resource.data.participants;
       
       // Allow participants to update conversation (lastMessage, etc.)
@@ -51,9 +75,24 @@ service cloud.firestore {
 
       // --- NESTED MESSAGES ---
       match /messages/{mid} {
-        // Allow participants to read/write messages
-        allow read, write: if request.auth != null && 
+        // Allow participants to read messages
+        allow read: if request.auth != null && 
           request.auth.uid in get(/databases/$(db)/documents/conversations/$(cid)).data.participants;
+        
+        // Allow participants to write their own messages
+        allow create: if request.auth != null && 
+          request.auth.uid in get(/databases/$(db)/documents/conversations/$(cid)).data.participants &&
+          request.resource.data.senderId == request.auth.uid;
+        
+        // Allow system messages (assistant notifications) from participants
+        allow create: if request.auth != null &&
+          request.auth.uid in get(/databases/$(db)/documents/conversations/$(cid)).data.participants &&
+          request.resource.data.senderId == 'assistant';
+        
+        // Allow participants to update/delete their own messages
+        allow update, delete: if request.auth != null &&
+          request.auth.uid in get(/databases/$(db)/documents/conversations/$(cid)).data.participants &&
+          resource.data.senderId == request.auth.uid;
       }
     }
 
@@ -75,26 +114,30 @@ service cloud.firestore {
     // --- EVENTS COLLECTION (PR5) ---
     // Calendar events for tutoring sessions
     match /events/{eventId} {
-      // Rule 1: Participants can read their events
-      allow read: if request.auth != null && 
-        request.auth.uid in resource.data.participants;
+      // Rule 1: Tutor or parents can read events they're involved in
+      allow read: if request.auth != null && (
+        request.auth.uid == resource.data.tutorId ||
+        request.auth.uid in resource.data.parentIds ||
+        request.auth.uid in resource.data.participants // Legacy support
+      );
       
-      // Rule 2: Authenticated users can create events if they're in participants
+      // Rule 2: Tutors and parents can create events
       allow create: if request.auth != null &&
+        hasRole() &&
         request.auth.uid in request.resource.data.participants &&
         request.auth.uid == request.resource.data.createdBy;
       
-      // Rule 3: Creator OR participants can update (for RSVP, conflict resolution)
+      // Rule 3: Tutor OR parents can update (for RSVP, conflict resolution)
       allow update: if request.auth != null && (
-        request.auth.uid == resource.data.createdBy ||
-        (request.auth.uid in resource.data.participants &&
+        request.auth.uid == resource.data.tutorId ||
+        (request.auth.uid in resource.data.parentIds &&
          request.resource.data.diff(resource.data).affectedKeys()
          .hasOnly(['rsvps', 'status', 'hasConflict', 'userAcceptedConflict', 'updatedAt']))
       );
       
-      // Rule 4: Only creator can delete event
+      // Rule 4: Only tutor (creator) can delete event
       allow delete: if request.auth != null &&
-        request.auth.uid == resource.data.createdBy;
+        request.auth.uid == resource.data.tutorId;
     }
 
     // --- DEADLINES COLLECTION (PR11) ---
@@ -104,13 +147,19 @@ service cloud.firestore {
       allow read: if request.auth != null && 
         request.auth.uid == resource.data.assignee;
       
-      // Rule 2: Creator (tutor) can read deadlines they created
+      // Rule 2: Creator can read deadlines they created
       allow read: if request.auth != null &&
         request.auth.uid == resource.data.createdBy;
       
-      // Rule 3: Authenticated users can create deadlines
+      // Rule 3: Tutors and parents can create deadlines with role validation
+      // Tutors create 'topic' tasks, parents/system create 'homework' tasks
       allow create: if request.auth != null &&
-        request.auth.uid == request.resource.data.createdBy;
+        hasRole() &&
+        request.auth.uid == request.resource.data.createdBy &&
+        (
+          (isTutor() && request.resource.data.type in ['topic', 'homework']) ||
+          (isParent() && request.resource.data.type == 'homework')
+        );
       
       // Rule 4: Assignee and creator can update deadline (for toggling complete)
       allow update: if request.auth != null && (
@@ -170,6 +219,27 @@ service cloud.firestore {
       
       // Only Cloud Functions can write (via admin SDK)
       allow write: if false;
+    }
+
+    // --- TUTOR_CODES COLLECTION ---
+    // Registry for O(1) tutor code lookups
+    // Format: /tutorCodes/{code} -> { tutorId, createdAt }
+    match /tutorCodes/{code} {
+      // Anyone authenticated can read codes to find tutors
+      allow read: if request.auth != null;
+      
+      // Only allow creation (reservation) via authenticated users
+      // Transactions in tutorCode.ts ensure atomicity
+      allow create: if request.auth != null &&
+        request.auth.uid == request.resource.data.tutorId;
+      
+      // Allow tutors to delete their own code entry (for account deletion)
+      allow delete: if request.auth != null &&
+        request.auth.uid == resource.data.tutorId;
+      
+      // No updates allowed
+      // If tutor changes code, create new entry (old code becomes orphaned)
+      allow update: if false;
     }
 
     // NOTE: Cloud Functions using admin SDK bypass all security rules

@@ -144,16 +144,44 @@ export function subscribeToUserConversations(
 
   return onSnapshot(
     q,
-    (snapshot) => {
+    async (snapshot) => {
+      // First fetch the user's blocked list
+      let blockedUserIds: string[] = [];
+      try {
+        const userDoc = await getDoc(doc(db, 'users', userId));
+        if (userDoc.exists()) {
+          blockedUserIds = userDoc.data().blockedUserIds || [];
+        }
+      } catch (error) {
+        console.error('Error fetching blocked users:', error);
+      }
+
       const conversations: Conversation[] = [];
-      snapshot.forEach((doc) => {
-        const data = doc.data();
+      snapshot.forEach((docSnapshot) => {
+        const data = docSnapshot.data();
+        
+        // Skip archived conversations
+        if (data.archived === true) {
+          return;
+        }
+        
+        // Skip conversations with blocked users
+        const hasBlockedUser = data.participants.some((participantId: string) => 
+          participantId !== userId && blockedUserIds.includes(participantId)
+        );
+        
+        if (hasBlockedUser) {
+          return;
+        }
+        
         conversations.push({
-          id: doc.id,
+          id: docSnapshot.id,
           type: data.type,
           participants: data.participants,
           lastMessage: data.lastMessage,
           name: data.name,
+          archived: data.archived,
+          archivedAt: data.archivedAt,
           createdAt: data.createdAt,
           updatedAt: data.updatedAt,
         });

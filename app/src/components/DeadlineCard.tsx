@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import { DeadlineMeta } from '@/types/index';
@@ -9,10 +10,25 @@ dayjs.extend(relativeTime);
 interface DeadlineCardProps {
   deadline: DeadlineMeta;
   onMarkDone?: () => void;
+  onDelete?: () => void;
   onPress?: () => void;
 }
 
-export default function DeadlineCard({ deadline, onMarkDone, onPress }: DeadlineCardProps) {
+export default function DeadlineCard({ deadline, onMarkDone, onDelete, onPress }: DeadlineCardProps) {
+  const handleDelete = () => {
+    Alert.alert(
+      'Delete Task',
+      `Are you sure you want to delete "${deadline.title}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => onDelete?.(),
+        },
+      ]
+    );
+  };
   const formatDueDate = () => {
     const due = dayjs(deadline.dueDate.toDate());
     const now = dayjs();
@@ -90,19 +106,36 @@ export default function DeadlineCard({ deadline, onMarkDone, onPress }: Deadline
         )}
       </View>
 
-      {/* Mark done button */}
-      {!deadline.completed && onMarkDone && (
-        <TouchableOpacity
-          style={styles.markDoneButton}
-          onPress={(e) => {
-            e.stopPropagation();
-            onMarkDone();
-          }}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.markDoneText}>Done</Text>
-        </TouchableOpacity>
-      )}
+      {/* Action buttons */}
+      <View style={styles.actions}>
+        {/* Mark done button */}
+        {!deadline.completed && onMarkDone && (
+          <TouchableOpacity
+            style={styles.markDoneButton}
+            onPress={(e) => {
+              e.stopPropagation();
+              onMarkDone();
+            }}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.markDoneText}>Done</Text>
+          </TouchableOpacity>
+        )}
+        
+        {/* Delete button */}
+        {onDelete && (
+          <TouchableOpacity
+            style={styles.deleteButton}
+            onPress={(e) => {
+              e.stopPropagation();
+              handleDelete();
+            }}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="trash-outline" size={20} color="#FF3B30" />
+          </TouchableOpacity>
+        )}
+      </View>
     </TouchableOpacity>
   );
 }
@@ -160,6 +193,11 @@ const styles = StyleSheet.create({
     textDecorationLine: 'line-through',
     opacity: 0.6,
   },
+  actions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   markDoneButton: {
     backgroundColor: '#34C759',
     paddingHorizontal: 16,
@@ -170,6 +208,14 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 13,
     fontWeight: '600',
+  },
+  deleteButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#FFEBEE',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
 

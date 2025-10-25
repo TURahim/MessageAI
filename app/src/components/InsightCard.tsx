@@ -26,16 +26,16 @@ export default function InsightCard({
       onPress={onPress}
       activeOpacity={onPress ? 0.7 : 1}
     >
-      {/* Icon */}
+      {/* Icon - now on the left */}
       <View style={[styles.iconContainer, { backgroundColor: `${color}15` }]}>
         <Text style={styles.icon}>{icon}</Text>
       </View>
 
-      {/* Content */}
+      {/* Content - now on the right */}
       <View style={styles.content}>
-        <Text style={styles.title}>{title}</Text>
+        <Text style={styles.title} numberOfLines={1}>{title}</Text>
         <Text style={[styles.value, { color }]}>{value}</Text>
-        {subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
+        {subtitle && <Text style={styles.subtitle} numberOfLines={1}>{subtitle}</Text>}
       </View>
     </CardComponent>
   );
@@ -44,46 +44,54 @@ export default function InsightCard({
 const styles = StyleSheet.create({
   card: {
     backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 16,
-    borderLeftWidth: 4,
+    borderRadius: 12,
+    padding: 12,
+    paddingVertical: 14,
+    borderLeftWidth: 3,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
-    minHeight: 120,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+    elevation: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 88,
+    maxHeight: 104,
   },
   iconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 12,
+    marginRight: 12,
+    flexShrink: 0,
   },
   icon: {
-    fontSize: 24,
+    fontSize: 18,
   },
   content: {
     flex: 1,
+    justifyContent: 'center',
   },
   title: {
-    fontSize: 14,
+    fontSize: 11,
     fontWeight: '600',
     color: '#666',
-    marginBottom: 8,
+    marginBottom: 4,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.3,
   },
   value: {
-    fontSize: 32,
+    fontSize: 26,
     fontWeight: '700',
-    marginBottom: 4,
+    lineHeight: 28,
+    marginBottom: 2,
   },
   subtitle: {
-    fontSize: 13,
+    fontSize: 11,
     color: '#999',
+    lineHeight: 14,
   },
 });
 

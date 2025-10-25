@@ -36,35 +36,34 @@ function AppContent() {
     }
   }, [user]);
 
-  // Global auth guard: redirect based on auth state from anywhere in the app
+  // Minimal auth guard
   useEffect(() => {
     if (loading) return; // Don't redirect while checking auth state
 
-    // Wait for segments to be ready (avoid redirecting before navigation is initialized)
-    if (!segments || segments.length <= 1) {
-      console.log('🛡️ Auth guard: Waiting for navigation to initialize...');
+    // Wait for navigation to be ready
+    if (!segments || segments.length < 1) {
       return;
     }
 
     const inAuthGroup = segments[0] === '(auth)';
-    const inTabsGroup = segments[0] === '(tabs)';
     const currentPath = segments.join('/');
 
-    console.log('🛡️ Auth guard check:', {
+    console.log('🛡️ _layout auth guard:', {
       hasUser: !!user,
       currentPath,
       inAuthGroup,
-      inTabsGroup,
     });
 
+    // Redirect unauthenticated users to login
     if (!user && !inAuthGroup) {
-      // User is not authenticated and not in auth screens -> redirect to login
-      console.log('🔒 Not authenticated, redirecting to login');
+      console.log('🔒 _layout: Not authenticated, redirecting to login');
       router.replace('/(auth)/login');
-    } else if (user && inAuthGroup) {
-      // User is authenticated but in auth screens -> redirect to tabs
-      console.log('✅ Authenticated, redirecting to home');
-      router.replace('/(tabs)');
+    }
+    
+    // Redirect authenticated users from auth screens to index (which will check role)
+    if (user && inAuthGroup) {
+      console.log('✅ _layout: Authenticated user in auth group, redirecting to index for role check');
+      router.replace('/');
     }
   }, [user, loading, segments, router]);
 
@@ -73,6 +72,21 @@ function AppContent() {
       <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen name="(auth)" options={{ headerShown: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen 
+        name="selectRole" 
+        options={{ 
+          headerShown: false,
+          gestureEnabled: false, // Prevent back swipe
+        }} 
+      />
+      <Stack.Screen 
+        name="joinTutor" 
+        options={{ 
+          title: 'Connect with Tutor',
+          headerShown: true,
+          presentation: 'modal'
+        }} 
+      />
       <Stack.Screen 
         name="users" 
         options={{ 
@@ -97,10 +111,19 @@ function AppContent() {
         }} 
       />
       <Stack.Screen 
+        name="profile" 
+        options={{ 
+          title: 'Profile', 
+          headerShown: true,
+          headerBackTitle: 'Back'
+        }} 
+      />
+      <Stack.Screen 
         name="profile/[id]" 
         options={{ 
           title: 'Profile', 
-          headerShown: true 
+          headerShown: true,
+          headerBackTitle: 'Back'
         }} 
       />
       <Stack.Screen 

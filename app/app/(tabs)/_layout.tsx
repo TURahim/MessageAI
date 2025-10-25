@@ -1,4 +1,6 @@
-import { Tabs } from 'expo-router';
+import { Tabs, router } from 'expo-router';
+import { TouchableOpacity } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import TabIcon from '@/components/TabIcon';
 
 export default function TabLayout() {
@@ -20,10 +22,32 @@ export default function TabLayout() {
           fontWeight: '600',
           marginBottom: 2,
         },
+        headerRight: () => (
+          <TouchableOpacity 
+            onPress={() => router.push('/profile')} 
+            style={{ marginRight: 15 }}
+          >
+            <Ionicons name="person-circle-outline" size={28} color="#007AFF" />
+          </TouchableOpacity>
+        ),
       }}
     >
       <Tabs.Screen 
         name="index" 
+        options={{ 
+          title: 'Overview',
+          headerShown: true,
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon 
+              name={focused ? 'home' : 'home-outline'} 
+              color={color} 
+              focused={focused}
+            />
+          ),
+        }} 
+      />
+      <Tabs.Screen 
+        name="chats" 
         options={{ 
           title: 'Chats',
           headerShown: true,
@@ -70,20 +94,6 @@ export default function TabLayout() {
           title: 'Assistant',
           headerShown: true,
           href: null, // Hide from tab bar
-        }} 
-      />
-      <Tabs.Screen 
-        name="profile" 
-        options={{ 
-          title: 'Profile',
-          headerShown: true,
-          tabBarIcon: ({ color, focused }) => (
-            <TabIcon 
-              name={focused ? 'person' : 'person-outline'} 
-              color={color} 
-              focused={focused}
-            />
-          ),
         }} 
       />
     </Tabs>

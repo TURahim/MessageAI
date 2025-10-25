@@ -10,11 +10,11 @@ import {
   ScrollView,
 } from 'react-native';
 import { useLocalSearchParams, router, useNavigation } from 'expo-router';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, query, collection, where, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/hooks/useAuth';
 import { User } from '@/types/index';
-import { addFriend, removeFriend, isFriend } from '@/services/friendService';
+import { disconnectTutorParent, blockUser, areUsersConnected, isUserBlocked } from '@/services/connectionService';
 import { getOrCreateDirectConversation } from '@/services/conversationService';
 import OnlineIndicator from '@/components/OnlineIndicator';
 
@@ -24,7 +24,9 @@ export default function ProfileScreen() {
   const { user: currentUser } = useAuth();
   const [profileUser, setProfileUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isFriendStatus, setIsFriendStatus] = useState(false);
+  const [isConnected, setIsConnected] = useState(false);
+  const [isBlocked, setIsBlocked] = useState(false);
+  const [conversationId, setConversationId] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
 
   const userId = id || '';
@@ -39,7 +41,8 @@ export default function ProfileScreen() {
 
   useEffect(() => {
     fetchUserProfile();
-    checkFriendStatus();
+    checkConnectionStatus();
+    findConversation();
   }, [userId]);
 
   const fetchUserProfile = async () => {
@@ -56,43 +59,55 @@ export default function ProfileScreen() {
     }
   };
 
-  const checkFriendStatus = async () => {
+  const checkConnectionStatus = async () => {
     if (!currentUser?.uid || isOwnProfile) return;
     
     try {
-      const status = await isFriend(currentUser.uid, userId);
-      setIsFriendStatus(status);
+      const [connected, blocked] = await Promise.all([
+        areUsersConnected(currentUser.uid, userId),
+        isUserBlocked(currentUser.uid, userId),
+      ]);
+      setIsConnected(connected);
+      setIsBlocked(blocked);
     } catch (error) {
-      console.error('Error checking friend status:', error);
+      console.error('Error checking connection status:', error);
     }
   };
 
-  const handleAddFriend = async () => {
-    if (!currentUser?.uid) return;
-
-    setActionLoading(true);
+  const findConversation = async () => {
+    if (!currentUser?.uid || isOwnProfile) return;
+    
     try {
-      await addFriend(currentUser.uid, userId);
-      setIsFriendStatus(true);
-      // Close profile screen, then close suggested contacts screen
-      router.back(); // Close profile
-      setTimeout(() => {
-        router.back(); // Close suggested contacts → back to main chat screen
-      }, 100);
-    } catch (error: any) {
-      console.error('Error adding friend:', error);
-      Alert.alert('Error', error.message || 'Failed to add friend');
-    } finally {
-      setActionLoading(false);
+      // Find conversation between current user and profile user
+      const conversationsRef = collection(db, 'conversations');
+      const q = query(
+        conversationsRef,
+        where('participants', 'array-contains', currentUser.uid),
+        where('type', '==', 'direct')
+      );
+      
+      const snapshot = await getDocs(q);
+      const conv = snapshot.docs.find((doc) => {
+        const data = doc.data();
+        return data.participants.includes(userId) && !data.archived;
+      });
+      
+      if (conv) {
+        setConversationId(conv.id);
+      }
+    } catch (error) {
+      console.error('Error finding conversation:', error);
     }
   };
 
-  const handleRemoveFriend = async () => {
-    if (!currentUser?.uid) return;
+  const handleRemoveConnection = async () => {
+    if (!currentUser?.uid || !profileUser) return;
+
+    const connectionLabel = profileUser.role === 'tutor' ? 'Tutor' : 'Parent';
 
     Alert.alert(
-      'Remove Friend',
-      `Remove ${profileUser?.displayName} from your friends?`,
+      `Remove ${connectionLabel}`,
+      `Are you sure you want to remove ${profileUser.displayName}? You can reconnect later.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -101,16 +116,44 @@ export default function ProfileScreen() {
           onPress: async () => {
             setActionLoading(true);
             try {
-              await removeFriend(currentUser.uid, userId);
-              setIsFriendStatus(false);
-              // Close profile screen, then close suggested contacts screen
-              router.back(); // Close profile
-              setTimeout(() => {
-                router.back(); // Close suggested contacts → back to main chat screen
-              }, 100);
+              await disconnectTutorParent(currentUser.uid, userId, conversationId || undefined);
+              setIsConnected(false);
+              Alert.alert('Success', `${profileUser.displayName} has been removed.`);
+              router.back();
             } catch (error: any) {
-              console.error('Error removing friend:', error);
-              Alert.alert('Error', error.message || 'Failed to remove friend');
+              console.error('Error removing connection:', error);
+              Alert.alert('Error', error.message || 'Failed to remove connection');
+            } finally {
+              setActionLoading(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleBlockUser = async () => {
+    if (!currentUser?.uid || !profileUser) return;
+
+    Alert.alert(
+      'Block User',
+      `Are you sure you want to block ${profileUser.displayName}? This will remove your connection and prevent future communication.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Block',
+          style: 'destructive',
+          onPress: async () => {
+            setActionLoading(true);
+            try {
+              await blockUser(currentUser.uid, userId, conversationId || undefined);
+              setIsBlocked(true);
+              setIsConnected(false);
+              Alert.alert('Success', `${profileUser.displayName} has been blocked.`);
+              router.back();
+            } catch (error: any) {
+              console.error('Error blocking user:', error);
+              Alert.alert('Error', error.message || 'Failed to block user');
             } finally {
               setActionLoading(false);
             }
@@ -193,10 +236,29 @@ export default function ProfileScreen() {
         </View>
       )}
 
+      {/* Role Badge */}
+      {profileUser.role && (
+        <View style={styles.roleSection}>
+          <Text style={styles.roleLabel}>
+            {profileUser.role === 'tutor' ? '👨‍🏫 Tutor' : '👨‍👩‍👧 Parent'}
+          </Text>
+          {profileUser.role === 'tutor' && profileUser.subjects && profileUser.subjects.length > 0 && (
+            <Text style={styles.subjectsText}>{profileUser.subjects.join(', ')}</Text>
+          )}
+          {profileUser.role === 'parent' && profileUser.studentContext && (
+            <Text style={styles.studentText}>Parent of {profileUser.studentContext}</Text>
+          )}
+        </View>
+      )}
+
       {/* Action Buttons */}
       {!isOwnProfile && (
         <View style={styles.actionsSection}>
-          {isFriendStatus ? (
+          {isBlocked ? (
+            <View style={styles.blockedNote}>
+              <Text style={styles.blockedText}>This user is blocked</Text>
+            </View>
+          ) : isConnected ? (
             <>
               <TouchableOpacity
                 style={styles.messageButton}
@@ -211,25 +273,29 @@ export default function ProfileScreen() {
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={styles.removeFriendButton}
-                onPress={handleRemoveFriend}
+                style={styles.removeConnectionButton}
+                onPress={handleRemoveConnection}
                 disabled={actionLoading}
               >
-                <Text style={styles.removeFriendButtonText}>Remove Friend</Text>
+                <Text style={styles.removeConnectionButtonText}>
+                  Remove {profileUser?.role === 'tutor' ? 'Tutor' : 'Parent'}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.blockButton}
+                onPress={handleBlockUser}
+                disabled={actionLoading}
+              >
+                <Text style={styles.blockButtonText}>Block User</Text>
               </TouchableOpacity>
             </>
           ) : (
-            <TouchableOpacity
-              style={styles.addFriendButton}
-              onPress={handleAddFriend}
-              disabled={actionLoading}
-            >
-              {actionLoading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.addFriendButtonText}>👋 Add Friend</Text>
-              )}
-            </TouchableOpacity>
+            <View style={styles.notConnectedNote}>
+              <Text style={styles.notConnectedText}>
+                Not connected. {profileUser?.role === 'tutor' ? 'Use their tutor code to connect.' : 'They need to connect using your tutor code.'}
+              </Text>
+            </View>
           )}
         </View>
       )}
@@ -332,23 +398,33 @@ const styles = StyleSheet.create({
     color: '#333',
     lineHeight: 22,
   },
+  roleSection: {
+    width: '100%',
+    backgroundColor: '#fff',
+    padding: 16,
+    marginVertical: 20,
+    borderRadius: 12,
+    marginHorizontal: 20,
+    alignItems: 'center',
+  },
+  roleLabel: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#007AFF',
+    marginBottom: 8,
+  },
+  subjectsText: {
+    fontSize: 14,
+    color: '#666',
+  },
+  studentText: {
+    fontSize: 14,
+    color: '#666',
+  },
   actionsSection: {
     width: '100%',
     paddingHorizontal: 20,
     marginTop: 10,
-  },
-  addFriendButton: {
-    backgroundColor: '#007AFF',
-    height: 50,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  addFriendButtonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '600',
   },
   messageButton: {
     backgroundColor: '#007AFF',
@@ -363,19 +439,59 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
   },
-  removeFriendButton: {
+  removeConnectionButton: {
+    backgroundColor: '#fff',
+    height: 50,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#FF3B30',
+    marginBottom: 10,
+  },
+  removeConnectionButtonText: {
+    color: '#FF3B30',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  blockButton: {
     backgroundColor: '#fff',
     height: 50,
     borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#FF3B30',
+    borderColor: '#999',
+    marginBottom: 10,
   },
-  removeFriendButtonText: {
-    color: '#FF3B30',
+  blockButtonText: {
+    color: '#666',
     fontSize: 16,
     fontWeight: '600',
+  },
+  blockedNote: {
+    width: '100%',
+    padding: 20,
+    backgroundColor: '#FFE5E5',
+    borderRadius: 12,
+  },
+  blockedText: {
+    fontSize: 14,
+    color: '#FF3B30',
+    textAlign: 'center',
+    fontWeight: '500',
+  },
+  notConnectedNote: {
+    width: '100%',
+    padding: 20,
+    backgroundColor: '#F0F0F0',
+    borderRadius: 12,
+  },
+  notConnectedText: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+    lineHeight: 20,
   },
   ownProfileNote: {
     width: '100%',

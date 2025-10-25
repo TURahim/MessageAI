@@ -22,6 +22,12 @@ export interface EventDocument {
   status: 'pending' | 'confirmed' | 'declined';
   conversationId?: string; // Optional link to conversation
   createdBy: string; // User ID who created
+  
+  // Tutor-Parent specific fields
+  tutorId: string; // Always the tutor (creator for tutor-created events)
+  parentIds: string[]; // One or more parents attending
+  studentContext?: string; // Optional student initials/name for context
+  
   location?: string; // Optional location
   rsvps?: {
     [userId: string]: {

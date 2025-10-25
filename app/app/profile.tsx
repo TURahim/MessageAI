@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, Image, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, Image, ActivityIndicator, Modal } from 'react-native';
 import { router } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
-import { signOut } from '@/services/authService';
+import { signOut, deleteAccount } from '@/services/authService';
 import * as ImagePicker from 'expo-image-picker';
 import { updateProfile } from 'firebase/auth';
 import { doc, updateDoc, getDoc } from 'firebase/firestore';
@@ -21,6 +21,11 @@ export default function ProfileScreen() {
   const [uploading, setUploading] = useState(false);
   const [firestoreProfile, setFirestoreProfile] = useState<any>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  
+  // Delete account states
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleting, setDeleting] = useState(false);
 
   // Log user object for debugging
   useEffect(() => {
@@ -82,6 +87,57 @@ export default function ProfileScreen() {
     } catch (error: any) {
       console.error('❌ Sign out failed:', error);
       Alert.alert('Sign Out Error', error.message || 'Failed to sign out. Please try again.');
+    }
+  };
+
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      '⚠️ Delete Account',
+      'This action is permanent and cannot be undone. All your data, messages, events, and tasks will be deleted. Are you sure you want to continue?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Continue',
+          style: 'destructive',
+          onPress: () => setShowDeleteModal(true),
+        },
+      ]
+    );
+  };
+
+  const confirmDeleteAccount = async () => {
+    if (!deletePassword.trim()) {
+      Alert.alert('Password Required', 'Please enter your password to confirm account deletion.');
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      await deleteAccount(deletePassword);
+      
+      // Success - account deleted, user will be signed out automatically
+      Alert.alert(
+        'Account Deleted',
+        'Your account and all associated data have been permanently deleted.',
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              setShowDeleteModal(false);
+              router.replace('/(auth)/login');
+            },
+          },
+        ]
+      );
+    } catch (error: any) {
+      console.error('❌ Delete account failed:', error);
+      Alert.alert(
+        'Deletion Failed',
+        error.message || 'Failed to delete account. Please check your password and try again.'
+      );
+    } finally {
+      setDeleting(false);
+      setDeletePassword('');
     }
   };
 
@@ -286,6 +342,67 @@ export default function ProfileScreen() {
       >
         <Text style={styles.buttonText}>Sign Out</Text>
       </TouchableOpacity>
+
+      {/* Delete Account */}
+      <TouchableOpacity 
+        style={[styles.button, styles.deleteAccountButton]} 
+        onPress={handleDeleteAccount}
+      >
+        <Text style={styles.deleteAccountButtonText}>Delete Account</Text>
+      </TouchableOpacity>
+
+      {/* Delete Account Confirmation Modal */}
+      <Modal
+        visible={showDeleteModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowDeleteModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Confirm Account Deletion</Text>
+            <Text style={styles.modalMessage}>
+              Please enter your password to permanently delete your account and all associated data.
+            </Text>
+
+            <TextInput
+              style={styles.passwordInput}
+              placeholder="Enter your password"
+              secureTextEntry
+              value={deletePassword}
+              onChangeText={setDeletePassword}
+              autoCapitalize="none"
+              autoCorrect={false}
+              editable={!deleting}
+            />
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalCancelButton]}
+                onPress={() => {
+                  setShowDeleteModal(false);
+                  setDeletePassword('');
+                }}
+                disabled={deleting}
+              >
+                <Text style={styles.modalCancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalDeleteButton]}
+                onPress={confirmDeleteAccount}
+                disabled={deleting}
+              >
+                {deleting ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.modalDeleteButtonText}>Delete Forever</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -378,7 +495,85 @@ const styles = StyleSheet.create({
   signOutButton: {
     backgroundColor: '#FF3B30',
   },
+  deleteAccountButton: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: '#8E8E93',
+  },
+  deleteAccountButtonText: {
+    color: '#8E8E93',
+    fontSize: 16,
+    fontWeight: '600',
+  },
   buttonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#000',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  modalMessage: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 20,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  passwordInput: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    marginBottom: 20,
+    backgroundColor: '#F9F9F9',
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  modalCancelButton: {
+    backgroundColor: '#F0F0F0',
+  },
+  modalCancelButtonText: {
+    color: '#000',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  modalDeleteButton: {
+    backgroundColor: '#FF3B30',
+  },
+  modalDeleteButtonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',

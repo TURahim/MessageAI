@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, SectionList, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, SectionList, StyleSheet, Alert } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import EmptyState from './EmptyState';
@@ -15,6 +16,8 @@ export interface Deadline {
   assigneeName?: string;
   conversationId?: string;
   completed?: boolean;
+  type?: 'homework' | 'topic'; // homework=for parent, topic=for tutor
+  creatorRole?: 'tutor' | 'parent' | 'system'; // Who created the task
   createdAt?: Date;
 }
 
@@ -22,6 +25,7 @@ interface DeadlineListProps {
   deadlines: Deadline[];
   onDeadlinePress?: (deadline: Deadline) => void;
   onMarkComplete?: (deadlineId: string) => void;
+  onDelete?: (deadlineId: string) => void;
 }
 
 interface DeadlineSection {
@@ -34,7 +38,22 @@ export default function DeadlineList({
   deadlines,
   onDeadlinePress,
   onMarkComplete,
+  onDelete,
 }: DeadlineListProps) {
+  const handleDelete = (deadline: Deadline) => {
+    Alert.alert(
+      'Delete Task',
+      `Are you sure you want to delete "${deadline.title}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => onDelete?.(deadline.id),
+        },
+      ]
+    );
+  };
   // Group deadlines into sections
   const sections: DeadlineSection[] = React.useMemo(() => {
     const now = dayjs();
@@ -151,8 +170,25 @@ export default function DeadlineList({
         )}
       </View>
 
-      {/* Arrow indicator */}
-      <Text style={styles.arrow}>›</Text>
+      {/* Actions */}
+      <View style={styles.actions}>
+        {/* Delete button */}
+        {onDelete && (
+          <TouchableOpacity
+            style={styles.deleteButton}
+            onPress={(e) => {
+              e?.stopPropagation?.();
+              handleDelete(item);
+            }}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Ionicons name="trash-outline" size={20} color="#FF3B30" />
+          </TouchableOpacity>
+        )}
+        
+        {/* Arrow indicator */}
+        <Text style={styles.arrow}>›</Text>
+      </View>
     </TouchableOpacity>
   );
 
@@ -256,10 +292,18 @@ const styles = StyleSheet.create({
   completedText: {
     textDecorationLine: 'line-through',
   },
+  actions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  deleteButton: {
+    padding: 4,
+  },
   arrow: {
     fontSize: 24,
     color: '#C7C7CC',
-    marginLeft: 8,
+    marginLeft: 4,
   },
 });
 

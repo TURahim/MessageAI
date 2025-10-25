@@ -19,6 +19,7 @@ export interface Message {
   conversationId: string;
   senderId: string;
   senderName?: string;
+  senderRole?: 'tutor' | 'parent'; // Role of message sender
   text: string;
   createdAt: Date;
   meta?: any;

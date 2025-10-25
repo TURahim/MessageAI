@@ -223,11 +223,25 @@ export const onMessageCreated = onDocumentCreated({
     // Check for manual override in metadata
     const bypassGating = messageData.meta?.bypassGating === true;
 
+    // Fetch sender's role data for context
+    let senderRole: 'tutor' | 'parent' | undefined;
+    try {
+      const senderDoc = await admin.firestore().doc(`users/${messageData.senderId}`).get();
+      if (senderDoc.exists) {
+        const senderData = senderDoc.data();
+        senderRole = senderData?.role;
+      }
+    } catch (error) {
+      logger.warn('⚠️ Could not fetch sender role', { error });
+    }
+
     // Analyze message with gating classifier
     const analysis = await analyzeMessage({
       id: messageId,
       conversationId,
       senderId: messageData.senderId,
+      senderName: messageData.senderName,
+      senderRole, // Pass role for AI context
       text: messageData.text,
       createdAt: messageData.serverTimestamp?.toDate() || new Date(),
       meta: messageData.meta,

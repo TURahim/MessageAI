@@ -7,14 +7,15 @@ import { Event } from './EventListItem';
 dayjs.extend(isoWeek);
 
 interface CalendarHeaderProps {
-  selectedDate: Date;
+  selectedDate: Date | null;
   onDateSelect: (date: Date) => void;
+  onShowAll: () => void;
   events: Event[];
 }
 
-export default function CalendarHeader({ selectedDate, onDateSelect, events }: CalendarHeaderProps) {
+export default function CalendarHeader({ selectedDate, onDateSelect, onShowAll, events }: CalendarHeaderProps) {
   const [currentWeekStart, setCurrentWeekStart] = useState(
-    dayjs(selectedDate).startOf('isoWeek')
+    dayjs(selectedDate || new Date()).startOf('isoWeek')
   );
 
   // Generate 7 days for the current week
@@ -35,6 +36,7 @@ export default function CalendarHeader({ selectedDate, onDateSelect, events }: C
   };
 
   const isSelected = (date: dayjs.Dayjs) => {
+    if (!selectedDate) return false; // No date selected when showing all
     return date.isSame(dayjs(selectedDate), 'day');
   };
 
@@ -66,55 +68,74 @@ export default function CalendarHeader({ selectedDate, onDateSelect, events }: C
         </TouchableOpacity>
       </View>
 
-      {/* Week days */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.weekDays}
-      >
-        {weekDays.map((day, index) => {
-          const selected = isSelected(day);
-          const today = isToday(day);
-          const conflict = hasConflict(day);
+      {/* Week days with Show All button */}
+      <View style={styles.weekContainer}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.weekDays}
+          style={styles.weekScroll}
+        >
+          {weekDays.map((day, index) => {
+            const selected = isSelected(day);
+            const today = isToday(day);
+            const conflict = hasConflict(day);
 
-          return (
-            <TouchableOpacity
-              key={index}
-              style={[
-                styles.dayButton,
-                selected && styles.dayButtonSelected,
-                today && !selected && styles.dayButtonToday,
-                conflict && !selected && styles.dayButtonConflict,
-              ]}
-              onPress={() => handleDayPress(day)}
-            >
-              <Text
+            return (
+              <TouchableOpacity
+                key={index}
                 style={[
-                  styles.dayName,
-                  selected && styles.dayNameSelected,
-                  today && !selected && styles.dayNameToday,
-                  conflict && !selected && styles.dayNameConflict,
+                  styles.dayButton,
+                  selected && styles.dayButtonSelected,
+                  today && !selected && styles.dayButtonToday,
+                  conflict && !selected && styles.dayButtonConflict,
                 ]}
+                onPress={() => handleDayPress(day)}
               >
-                {day.format('ddd')}
-              </Text>
-              <Text
-                style={[
-                  styles.dayNumber,
-                  selected && styles.dayNumberSelected,
-                  today && !selected && styles.dayNumberToday,
-                  conflict && !selected && styles.dayNumberConflict,
-                ]}
-              >
-                {day.format('D')}
-              </Text>
-              {conflict && !selected && (
-                <View style={styles.conflictDot} />
-              )}
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
+                <Text
+                  style={[
+                    styles.dayName,
+                    selected && styles.dayNameSelected,
+                    today && !selected && styles.dayNameToday,
+                    conflict && !selected && styles.dayNameConflict,
+                  ]}
+                >
+                  {day.format('ddd')}
+                </Text>
+                <Text
+                  style={[
+                    styles.dayNumber,
+                    selected && styles.dayNumberSelected,
+                    today && !selected && styles.dayNumberToday,
+                    conflict && !selected && styles.dayNumberConflict,
+                  ]}
+                >
+                  {day.format('D')}
+                </Text>
+                {conflict && !selected && (
+                  <View style={styles.conflictDot} />
+                )}
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+
+        {/* Show All button */}
+        <TouchableOpacity
+          style={[
+            styles.showAllButton,
+            !selectedDate && styles.showAllButtonActive
+          ]}
+          onPress={onShowAll}
+        >
+          <Text style={[
+            styles.showAllText,
+            !selectedDate && styles.showAllTextActive
+          ]}>
+            Show All
+          </Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -149,10 +170,40 @@ const styles = StyleSheet.create({
     fontSize: 20,
     color: '#007AFF',
   },
+  weekContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingRight: 12,
+  },
+  weekScroll: {
+    flex: 1,
+  },
   weekDays: {
-    paddingHorizontal: 12,
+    paddingLeft: 12,
     paddingVertical: 12,
     gap: 8,
+    flexGrow: 0,
+  },
+  showAllButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    backgroundColor: '#F5F5F5',
+    marginLeft: 8,
+  },
+  showAllButtonActive: {
+    backgroundColor: '#2979FF',
+    borderColor: '#2979FF',
+  },
+  showAllText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#666',
+  },
+  showAllTextActive: {
+    color: '#fff',
   },
   dayButton: {
     width: 50,
@@ -162,7 +213,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F5F5F5',
   },
   dayButtonSelected: {
-    backgroundColor: '#007AFF',
+    backgroundColor: '#2979FF',
   },
   dayButtonToday: {
     borderWidth: 2,

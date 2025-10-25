@@ -37,6 +37,8 @@ export default function ChatRoomScreen() {
   const navigation = useNavigation();
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [otherUserName, setOtherUserName] = useState<string>('');
+  const [otherUserData, setOtherUserData] = useState<any>(null); // Store full user data for role context
+  const [currentUserData, setCurrentUserData] = useState<any>(null); // Current user's role data
   const [uploadingImages, setUploadingImages] = useState<Map<string, number>>(new Map()); // messageId -> progress
   const [optimisticMessages, setOptimisticMessages] = useState<Message[]>([]); // Local queue for offline messages
   const [showRetryBanner, setShowRetryBanner] = useState(false);
@@ -265,6 +267,24 @@ export default function ChatRoomScreen() {
     });
   }, [isOnline, conversationId]); // Only isOnline and conversationId in deps
 
+  // Fetch current user's role data
+  useEffect(() => {
+    const fetchCurrentUserData = async () => {
+      try {
+        const userRef = doc(db, 'users', currentUserId);
+        const userDoc = await getDoc(userRef);
+        
+        if (userDoc.exists()) {
+          setCurrentUserData(userDoc.data());
+        }
+      } catch (error) {
+        console.error('Error fetching current user data:', error);
+      }
+    };
+
+    fetchCurrentUserData();
+  }, [currentUserId]);
+
   // Set initial navigation options
   useEffect(() => {
     navigation.setOptions({
@@ -297,20 +317,24 @@ export default function ChatRoomScreen() {
           const conv = { id: snapshot.id, ...snapshot.data() } as Conversation;
           setConversation(conv);
           
-          // Fetch other user's name for direct chats
+          // Fetch other user's name and role data for direct chats
           if (conv.type === 'direct') {
             const otherUserId = conv.participants.find(uid => uid !== currentUserId);
             if (otherUserId) {
               try {
                 const userDoc = await getDoc(doc(db, 'users', otherUserId));
                 if (userDoc.exists()) {
-                  setOtherUserName(userDoc.data().displayName || 'User');
+                  const userData = userDoc.data();
+                  setOtherUserName(userData.displayName || 'User');
+                  setOtherUserData(userData); // Store full user data for role context
                 } else {
                   setOtherUserName('User');
+                  setOtherUserData(null);
                 }
               } catch (error) {
-                console.error('Error fetching other user name:', error);
+                console.error('Error fetching other user data:', error);
                 setOtherUserName('User');
+                setOtherUserData(null);
               }
             }
           }
@@ -356,6 +380,20 @@ export default function ChatRoomScreen() {
           
           // Make the name tappable to view profile, add status chip if active invite
           if (otherUserName) {
+            // Get role-aware subtitle
+            let subtitle = '';
+            if (currentUserData?.role === 'tutor' && otherUserData?.role === 'parent') {
+              // Tutor viewing parent: show student context if available
+              subtitle = otherUserData.studentContext 
+                ? `Parent of ${otherUserData.studentContext}` 
+                : 'Parent';
+            } else if (currentUserData?.role === 'parent' && otherUserData?.role === 'tutor') {
+              // Parent viewing tutor: show subjects
+              subtitle = otherUserData.subjects && otherUserData.subjects.length > 0
+                ? otherUserData.subjects.join(', ')
+                : 'Tutor';
+            }
+
             title = () => (
               <TouchableOpacity
                 onPress={() => router.push(`/profile/${otherUserId}`)}
@@ -364,6 +402,12 @@ export default function ChatRoomScreen() {
                 <Text style={{ fontSize: 17, fontWeight: '600', color: '#000' }}>
                   {otherUserName}
                 </Text>
+                {/* Show subtitle with role context */}
+                {subtitle && (
+                  <Text style={{ fontSize: 12, color: '#666' }}>
+                    {subtitle}
+                  </Text>
+                )}
                 {/* Show status chip if there's an active invite */}
                 {threadStatus.hasActiveInvite && threadStatus.status && (
                   <StatusChip 
@@ -419,7 +463,7 @@ export default function ChatRoomScreen() {
         headerBackTitle: 'Chats',
       });
     }
-  }, [conversation, otherUserName, currentUserId, navigation, conversationId, threadStatus]);
+  }, [conversation, otherUserName, otherUserData, currentUserData, currentUserId, navigation, conversationId, threadStatus]);
 
   // NOTE: Push notifications are now handled by Firebase Cloud Functions
   // When a message is created, the Cloud Function automatically sends

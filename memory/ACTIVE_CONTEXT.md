@@ -8,30 +8,39 @@
 > 
 > These guides provide instant context for any development task.
 
-## Current Milestone: Production-Ready AI Platform - 95% Complete 🚀
-**Branch:** earlysub (experimental features → production-ready)  
-**Status:** Fast-path scheduling, conflict resolution, timezone support, RAG infrastructure  
-**Latest:** Performance revolution + UX polish complete - Oct 25, 2025
+## Current Milestone: Tutor-Parent Platform - Refactor Complete ✅
+**Branch:** earlysub  
+**Status:** Role-based tutor-parent communication system fully implemented  
+**Latest:** Complete UI/UX refactor + role system - Oct 25, 2025
 
-**🎯 AI FEATURES FULLY OPERATIONAL:**
-- ✅ **Fast-Path Scheduling:** <1s latency (was 10-15s) - 93% improvement
+**🎓 TUTOR-PARENT FEATURES:**
+- ✅ **Role System:** Tutors and parents with distinct experiences
+- ✅ **Tutor Codes:** Auto-generated codes for parent connection (TUT-XXXXX)
+- ✅ **Adaptive Dashboards:** Role-specific overview screens with AI insights
+- ✅ **4-Tab Navigation:** Overview, Chats, Schedule, Tasks (unified for both roles)
+- ✅ **Role-Aware Filtering:** Schedule and tasks adapt to user role
+- ✅ **Enhanced Headers:** Show student context and tutor subjects
+- ✅ **Join Flow:** Parents enter tutor code to connect
+- ✅ **Security Rules:** Role-based access control for all collections
+- ✅ **Task Types:** homework (parents) vs topics (tutors)
+- ✅ **Event Schema:** tutorId and parentIds for proper ownership
+
+**🎯 AI FEATURES (Inherited from JellyDM Platform):**
+- ✅ **Fast-Path Scheduling:** <1s latency - 93% improvement
 - ✅ **Conflict Detection:** Real-time with one-tap resolution
-- ✅ **User Timezones:** Per-viewer rendering, auto-detect + backfill
-- ✅ **Task Detection:** "homework due Friday" → creates deadline
-- ✅ **Urgency:** "URGENT: cancel" → immediate push notification  
-- ✅ **RSVP:** Accept/decline with real-time status updates
-- ✅ **Calendar Highlighting:** Red indicators for conflicted days
-- ✅ **RAG Infrastructure:** PII-protected embeddings ready
-- ✅ **Security:** Enhanced rules for all collections
-- ✅ **Idempotency:** Multiple layers, zero duplicates
+- ✅ **User Timezones:** Per-viewer rendering, auto-detect
+- ✅ **Task Detection:** Automatic deadline creation from chat
+- ✅ **Urgency:** Immediate push for cancellations/emergencies
+- ✅ **RSVP:** Accept/decline with auto-status updates
+- ✅ **Calendar Highlighting:** Red indicators for conflicts
+- ✅ **RAG Infrastructure:** PII-protected embeddings
+- ✅ **Idempotency:** Zero duplicate operations
 
 **Performance Stats:**
 - Scheduling: 725ms average (was 10-15s)
-- Cost: $0.0002/message (was $0.003)
+- Cost: $0.0002/message (was $0.003)  
 - LLM calls: 0-1 per message (was 3)
 - Fast-path coverage: 80%+ messages
-
-**Latest:** All systems operational, ready for beta testing - Oct 25, 2025 🎉
 
 ## What's Working (Phase 1-8 Complete)
 - ✅ Expo Router file-based routing (nested app/app/ structure)

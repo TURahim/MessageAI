@@ -88,7 +88,22 @@ export interface User {
   email?: string;
   photoURL: string | null;
   bio?: string; // Short user description/status
-  friends: string[]; // Array of friend UIDs
+  
+  // @deprecated Legacy social model - use linkedTutorIds for parents instead
+  // TODO: Migrate existing data and remove this field
+  friends?: string[]; // Array of friend UIDs (backward compatibility only)
+  
+  // Role system for tutor-parent communication
+  role?: 'tutor' | 'parent';
+  tutorCode?: string; // Only for tutors (e.g., "TUT-A3F9B") - also stored in /tutorCodes/{code}
+  linkedTutorIds?: string[]; // Only for parents - array of tutor UIDs
+  subjects?: string[]; // Only for tutors (e.g., ["Math", "Physics"])
+  businessName?: string; // Optional for tutors
+  studentContext?: string; // For parents - student initials/name (not stored publicly)
+  
+  // Blocking system
+  blockedUserIds?: string[]; // Array of user IDs this user has blocked
+  
   pushToken?: string; // Expo push token for remote notifications
   pushTokenUpdatedAt?: Timestamp; // When push token was last updated
   timezone?: string; // IANA timezone (e.g., "America/Toronto")
@@ -98,6 +113,13 @@ export interface User {
   };
   presence: UserPresence;
   createdAt?: Timestamp;
+}
+
+// Tutor Code Registry
+// Collection: /tutorCodes/{code}
+export interface TutorCodeRegistry {
+  tutorId: string; // uid of the tutor
+  createdAt: Timestamp;
 }
 
 // Conversation types
@@ -117,6 +139,8 @@ export interface Conversation {
   lastMessage: LastMessage | null;
   name?: string; // Groups only
   typing?: { [userId: string]: Timestamp }; // Typing indicators
+  archived?: boolean; // Soft delete for removed connections
+  archivedAt?: Date; // When the conversation was archived
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
 }

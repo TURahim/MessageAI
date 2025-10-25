@@ -25,6 +25,8 @@ export interface DeadlineDocument {
   assigneeName?: string; // Cached for display
   conversationId?: string; // Optional link to conversation
   completed: boolean;
+  type: 'homework' | 'topic'; // homework=for parent, topic=for tutor
+  creatorRole: 'tutor' | 'parent' | 'system'; // Who created the task
   createdBy: string; // User ID who created
   createdAt: Timestamp;
   updatedAt: Timestamp;
@@ -37,6 +39,8 @@ export interface CreateDeadlineInput {
   assigneeName?: string;
   conversationId?: string;
   createdBy: string;
+  type?: 'homework' | 'topic'; // Default to 'homework' if not specified
+  creatorRole?: 'tutor' | 'parent' | 'system'; // Default to 'system' if not specified
 }
 
 /**
@@ -49,6 +53,8 @@ export async function addDeadline(input: CreateDeadlineInput): Promise<string> {
     dueDate: Timestamp.fromDate(input.dueDate),
     assignee: input.assignee,
     completed: false,
+    type: input.type || 'homework', // Default to homework
+    creatorRole: input.creatorRole || 'system', // Default to system
     createdBy: input.createdBy,
     createdAt: Timestamp.now(),
     updatedAt: Timestamp.now(),
@@ -64,7 +70,7 @@ export async function addDeadline(input: CreateDeadlineInput): Promise<string> {
 
   const deadlineRef = await addDoc(collection(db, 'deadlines'), deadlineData);
 
-  console.log('✅ Deadline created:', deadlineRef.id);
+  console.log('✅ Deadline created:', deadlineRef.id, `(type: ${deadlineData.type})`);
   return deadlineRef.id;
 }
 
@@ -97,7 +103,38 @@ export async function toggleComplete(deadlineId: string, userId?: string, userNa
   if (newCompleted && deadlineData.conversationId) {
     const completedByName = userName || 'Someone';
     
+    console.log('📨 Attempting to send completion notification:', {
+      conversationId: deadlineData.conversationId,
+      deadlineTitle: deadlineData.title,
+      completedBy: userId,
+      hasConversationId: !!deadlineData.conversationId,
+    });
+    
     try {
+      // First verify the conversation exists and user is participant
+      const conversationRef = doc(db, 'conversations', deadlineData.conversationId);
+      const conversationSnap = await getDoc(conversationRef);
+      
+      if (!conversationSnap.exists()) {
+        console.warn('⚠️ Conversation not found, skipping notification');
+        return;
+      }
+      
+      const conversationData = conversationSnap.data();
+      const isParticipant = userId && conversationData.participants?.includes(userId);
+      
+      console.log('🔍 Conversation check:', {
+        exists: conversationSnap.exists(),
+        participants: conversationData.participants,
+        isUserParticipant: isParticipant,
+        userId,
+      });
+      
+      if (!isParticipant) {
+        console.warn('⚠️ User not in conversation participants, skipping notification');
+        return;
+      }
+      
       await addDoc(collection(db, 'conversations', deadlineData.conversationId, 'messages'), {
         senderId: 'assistant',
         senderName: 'JellyDM Assistant',
@@ -115,11 +152,18 @@ export async function toggleComplete(deadlineId: string, userId?: string, userNa
         readCount: 0,
       });
       
-      console.log('📨 Sent completion notification to conversation');
-    } catch (error) {
+      console.log('✅ Completion notification sent successfully');
+    } catch (error: any) {
       console.error('❌ Failed to send completion notification:', error);
+      console.error('Error details:', {
+        code: error.code,
+        message: error.message,
+        conversationId: deadlineData.conversationId,
+      });
       // Don't throw - task is still marked done
     }
+  } else if (newCompleted && !deadlineData.conversationId) {
+    console.log('ℹ️ No conversationId on deadline, skipping notification');
   }
 }
 

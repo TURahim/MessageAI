@@ -6,8 +6,11 @@ import {
   updateProfile,
   GoogleAuthProvider,
   signInWithCredential,
+  EmailAuthProvider,
+  reauthenticateWithCredential,
+  deleteUser,
 } from 'firebase/auth';
-import { doc, setDoc, serverTimestamp, getDoc } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp, getDoc, collection, query, where, getDocs, deleteDoc, writeBatch } from 'firebase/firestore';
 import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
 import * as AuthSession from 'expo-auth-session';
@@ -28,10 +31,8 @@ export async function signUpWithEmail(
   // Update profile
   await updateProfile(user, { displayName });
   
-  // Detect user's timezone
-  const detectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Toronto';
-  
-  // Create user document in Firestore
+  // Create user document in Firestore WITHOUT role
+  // User will select role on next screen (selectRole)
   await setDoc(doc(db, 'users', user.uid), {
     uid: user.uid,
     email: user.email,
@@ -39,7 +40,8 @@ export async function signUpWithEmail(
     photoURL: null,
     bio: '',
     friends: [],
-    timezone: detectedTimezone,
+    // role: undefined - will be set in selectRole screen
+    // timezone: undefined - will be set when role is selected
     presence: {
       status: 'offline',
       lastSeen: serverTimestamp(),
@@ -211,6 +213,38 @@ export function useGoogleAuth() {
   return { request, response, promptAsync };
 }
 
+/**
+ * Set user role and related data after signup
+ * Called from selectRole screen
+ */
+export async function setUserRole(
+  uid: string,
+  role: 'tutor' | 'parent',
+  data: {
+    tutorCode?: string;
+    subjects?: string[];
+    businessName?: string;
+    linkedTutorIds?: string[];
+    studentContext?: string;
+  }
+) {
+  // Detect timezone when role is selected
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Toronto';
+  
+  // Filter out undefined values (Firestore doesn't accept undefined)
+  const cleanData: Record<string, any> = { role, timezone };
+  
+  Object.entries(data).forEach(([key, value]) => {
+    if (value !== undefined) {
+      cleanData[key] = value;
+    }
+  });
+  
+  await setDoc(doc(db, 'users', uid), cleanData, { merge: true });
+  
+  console.log(`✅ User role set to ${role} with timezone ${timezone}`, cleanData);
+}
+
 export async function signOut() {
   try {
     console.log('🚪 Signing out...');
@@ -218,6 +252,138 @@ export async function signOut() {
     console.log('✅ Sign out successful');
   } catch (error: any) {
     console.error('❌ Sign out error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Re-authenticate user with password (required before account deletion)
+ */
+export async function reauthenticateWithPassword(password: string): Promise<boolean> {
+  try {
+    const user = auth.currentUser;
+    if (!user || !user.email) {
+      throw new Error('No authenticated user or email not found');
+    }
+
+    const credential = EmailAuthProvider.credential(user.email, password);
+    await reauthenticateWithCredential(user, credential);
+    
+    console.log('✅ Re-authentication successful');
+    return true;
+  } catch (error: any) {
+    console.error('❌ Re-authentication error:', error);
+    if (error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+      throw new Error('Incorrect password. Please try again.');
+    }
+    throw error;
+  }
+}
+
+/**
+ * Delete all user data from Firestore
+ */
+async function deleteUserData(userId: string): Promise<void> {
+  console.log('🗑️ Starting user data deletion for:', userId);
+
+  try {
+    // 0. Get user data before deletion (for tutor code cleanup)
+    const userRef = doc(db, 'users', userId);
+    const userDoc = await getDoc(userRef);
+    const userData = userDoc.exists() ? userDoc.data() : null;
+
+    // 2. Delete all conversations where user is participant
+    const conversationsRef = collection(db, 'conversations');
+    const conversationsQuery = query(conversationsRef, where('participants', 'array-contains', userId));
+    const conversationsSnapshot = await getDocs(conversationsQuery);
+    
+    console.log(`📊 Found ${conversationsSnapshot.size} conversations to delete`);
+    
+    for (const conversationDoc of conversationsSnapshot.docs) {
+      // Delete all messages in the conversation
+      const messagesRef = collection(db, 'conversations', conversationDoc.id, 'messages');
+      const messagesSnapshot = await getDocs(messagesRef);
+      
+      const batch = writeBatch(db);
+      messagesSnapshot.docs.forEach((messageDoc) => {
+        batch.delete(messageDoc.ref);
+      });
+      await batch.commit();
+      
+      // Delete the conversation document
+      await deleteDoc(conversationDoc.ref);
+      console.log(`✅ Deleted conversation: ${conversationDoc.id}`);
+    }
+
+    // 3. Delete all events created by or involving the user
+    const eventsRef = collection(db, 'events');
+    const eventsQuery = query(eventsRef, where('participants', 'array-contains', userId));
+    const eventsSnapshot = await getDocs(eventsQuery);
+    
+    console.log(`📊 Found ${eventsSnapshot.size} events to delete`);
+    
+    const eventsBatch = writeBatch(db);
+    eventsSnapshot.docs.forEach((eventDoc) => {
+      eventsBatch.delete(eventDoc.ref);
+    });
+    await eventsBatch.commit();
+    console.log('✅ Events deleted');
+
+    // 4. Delete all deadlines assigned to the user
+    const deadlinesRef = collection(db, 'deadlines');
+    const deadlinesQuery = query(deadlinesRef, where('assignee', '==', userId));
+    const deadlinesSnapshot = await getDocs(deadlinesQuery);
+    
+    console.log(`📊 Found ${deadlinesSnapshot.size} deadlines to delete`);
+    
+    const deadlinesBatch = writeBatch(db);
+    deadlinesSnapshot.docs.forEach((deadlineDoc) => {
+      deadlinesBatch.delete(deadlineDoc.ref);
+    });
+    await deadlinesBatch.commit();
+    console.log('✅ Deadlines deleted');
+
+    // 5. Delete tutor code registry entry if user is a tutor
+    if (userData && userData.tutorCode) {
+      const tutorCodeRef = doc(db, 'tutorCodes', userData.tutorCode);
+      await deleteDoc(tutorCodeRef);
+      console.log('✅ Tutor code registry entry deleted');
+    }
+
+    // 6. Finally, delete the user document
+    await deleteDoc(userRef);
+    console.log('✅ User document deleted');
+
+    console.log('✅ All user data deleted successfully');
+  } catch (error) {
+    console.error('❌ Error deleting user data:', error);
+    throw error;
+  }
+}
+
+/**
+ * Delete user account and all associated data
+ * Requires password re-authentication first
+ */
+export async function deleteAccount(password: string): Promise<void> {
+  try {
+    const user = auth.currentUser;
+    if (!user) {
+      throw new Error('No authenticated user');
+    }
+
+    console.log('🔐 Re-authenticating user before deletion...');
+    await reauthenticateWithPassword(password);
+
+    console.log('🗑️ Deleting user data...');
+    await deleteUserData(user.uid);
+
+    console.log('🗑️ Deleting Firebase Auth account...');
+    await deleteUser(user);
+
+    console.log('✅ Account deletion complete');
+  } catch (error: any) {
+    console.error('❌ Account deletion error:', error);
     throw error;
   }
 }

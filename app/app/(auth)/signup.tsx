@@ -22,7 +22,9 @@ export default function SignupScreen() {
     setLoading(true);
     try {
       await signUpWithEmail(email, password, displayName);
-      router.replace('/(tabs)');
+      // Don't navigate here - let the auth guard (index.tsx) handle routing
+      // It will redirect to /selectRole for new users (no role yet)
+      console.log('✅ Signup successful, auth guard will redirect to role selection');
     } catch (err: any) {
       const friendlyError = getFirebaseErrorMessage(err);
       setError(friendlyError.message);

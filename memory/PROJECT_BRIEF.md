@@ -7,8 +7,12 @@
 > 4. Use `MANUAL-TEST-CHECKLIST.md` for testing procedures (343 lines)
 
 ## Overview
-WhatsApp-style messaging app built with React Native + Expo + Firebase.
-Goal: Production-quality real-time messaging with offline support.
+MessageAI - Tutor-Parent Communication Platform built with React Native + Expo + Firebase.
+Goal: Role-based educational coordination with AI-powered scheduling, task management, and real-time messaging.
+
+**Current Focus:** Specialized tutor-parent messaging with distinct experiences for educators and parents.
+- Tutors: Manage parent relationships, schedule lessons, assign topics
+- Parents: Connect via tutor codes, track homework, receive updates
 
 ## Tech Stack
 - **Frontend:** React Native 0.81.4, Expo 54.0.13, Expo Router 6.0.12, React 19.1.0, TypeScript 5.9

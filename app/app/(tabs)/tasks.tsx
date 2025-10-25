@@ -1,16 +1,55 @@
-import React, { useState } from 'react';
-import { View, StyleSheet } from 'react-native';
+import React, { useState, useEffect, useMemo } from 'react';
+import { View, StyleSheet, Text } from 'react-native';
 import { useAuth } from '@/hooks/useAuth';
 import { useDeadlines } from '@/hooks/useDeadlines';
 import DeadlineList, { Deadline } from '@/components/DeadlineList';
 import DeadlineCreateModal from '@/components/DeadlineCreateModal';
 import FAB from '@/components/FAB';
 import LoadingSpinner from '@/components/LoadingSpinner';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { User } from '@/types/index';
 
 export default function TasksScreen() {
   const { user } = useAuth();
-  const { deadlines, loading, addDeadline, toggleComplete } = useDeadlines(user?.uid || null);
+  const { deadlines: allDeadlines, loading, addDeadline, toggleComplete, deleteDeadline } = useDeadlines(user?.uid || null);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [userData, setUserData] = useState<User | null>(null);
+
+  // Fetch user role data
+  useEffect(() => {
+    if (!user) return;
+
+    const fetchUserData = async () => {
+      try {
+        const userRef = doc(db, 'users', user.uid);
+        const userDoc = await getDoc(userRef);
+        
+        if (userDoc.exists()) {
+          setUserData(userDoc.data() as User);
+        }
+      } catch (error) {
+        console.error('Error fetching user data:', error);
+      }
+    };
+
+    fetchUserData();
+  }, [user]);
+
+  // Filter deadlines based on role
+  const deadlines = useMemo(() => {
+    if (!userData?.role) return allDeadlines;
+
+    // Tutors: Show 'topic' type tasks (priority topics for students)
+    // Parents: Show 'homework' type tasks (assignments for their child)
+    if (userData.role === 'tutor') {
+      // Show all tasks for tutors (or filter by type: 'topic')
+      return allDeadlines.filter((d) => !d.type || d.type === 'topic');
+    } else {
+      // Show homework tasks for parents
+      return allDeadlines.filter((d) => !d.type || d.type === 'homework');
+    }
+  }, [allDeadlines, userData]);
 
   const handleCreateDeadline = (deadline: {
     title: string;
@@ -30,6 +69,10 @@ export default function TasksScreen() {
     toggleComplete(deadlineId, user?.displayName || 'Student');
   };
 
+  const handleDelete = (deadlineId: string) => {
+    deleteDeadline(deadlineId);
+  };
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -44,6 +87,7 @@ export default function TasksScreen() {
       <DeadlineList
         deadlines={deadlines}
         onMarkComplete={handleMarkComplete}
+        onDelete={handleDelete}
       />
 
       {/* Create deadline modal */}
@@ -57,7 +101,7 @@ export default function TasksScreen() {
       <FAB
         onPress={() => setShowCreateModal(true)}
         icon="+"
-        label="Add Task"
+        label={userData?.role === 'tutor' ? 'Add Topic' : 'Add Task'}
       />
     </View>
   );

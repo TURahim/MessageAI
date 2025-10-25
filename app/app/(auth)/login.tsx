@@ -21,7 +21,9 @@ export default function LoginScreen() {
     setLoading(true);
     try {
       await signInWithEmail(email, password);
-      router.replace('/(tabs)');
+      // Don't navigate here - let the auth guard (index.tsx) handle routing
+      // It will check for role and redirect to /selectRole or /(tabs) accordingly
+      console.log('✅ Login successful, auth guard will handle navigation');
     } catch (err: any) {
       const friendlyError = getFirebaseErrorMessage(err);
       setError(friendlyError.message);
