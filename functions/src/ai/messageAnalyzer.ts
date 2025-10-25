@@ -243,11 +243,11 @@ export async function processMessageWithAI(
         logger.info('📚 Using Firebase Vector Search (server-side)', { correlationId });
         // TODO: Implement server-side Firebase Vector Search using admin SDK
         // For now, use mock until extension is properly configured
-        const { MockVectorRetriever } = await import('../../../app/src/services/vector/mockRetriever');
+        const { MockVectorRetriever } = await import('../services/mockRetriever');
         vectorRetriever = new MockVectorRetriever([]);
       } else {
         logger.info('📚 Using Mock Vector Retriever', { correlationId });
-        const { MockVectorRetriever } = await import('../../../app/src/services/vector/mockRetriever');
+        const { MockVectorRetriever } = await import('../services/mockRetriever');
         vectorRetriever = new MockVectorRetriever([]);
       }
     }
