@@ -169,15 +169,8 @@ export default function ProfileScreen() {
     setActionLoading(true);
     try {
       const conversationId = await getOrCreateDirectConversation(currentUser.uid, userId);
-      // Close profile screen, then close suggested contacts screen
-      router.back(); // Close profile
-      setTimeout(() => {
-        router.back(); // Close suggested contacts → back to main chat screen
-        // Then open the chat
-        setTimeout(() => {
-          router.push(`/chat/${conversationId}`);
-        }, 100);
-      }, 100);
+      // Navigate directly to chat instead of using back()
+      router.push(`/chat/${conversationId}`);
     } catch (error: any) {
       console.error('Error starting conversation:', error);
       Alert.alert('Error', error.message || 'Failed to start conversation');
