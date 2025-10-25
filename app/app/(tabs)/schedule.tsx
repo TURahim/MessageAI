@@ -56,6 +56,7 @@ export default function ScheduleScreen() {
       <CalendarHeader
         selectedDate={selectedDate}
         onDateSelect={handleDateSelect}
+        events={events}
       />
 
       {/* Event list grouped by day */}

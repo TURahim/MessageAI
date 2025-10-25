@@ -1,16 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
 import dayjs from 'dayjs';
 import isoWeek from 'dayjs/plugin/isoWeek';
+import { Event } from './EventListItem';
 
 dayjs.extend(isoWeek);
 
 interface CalendarHeaderProps {
   selectedDate: Date;
   onDateSelect: (date: Date) => void;
+  events: Event[];
 }
 
-export default function CalendarHeader({ selectedDate, onDateSelect }: CalendarHeaderProps) {
+export default function CalendarHeader({ selectedDate, onDateSelect, events }: CalendarHeaderProps) {
   const [currentWeekStart, setCurrentWeekStart] = useState(
     dayjs(selectedDate).startOf('isoWeek')
   );
@@ -40,6 +42,13 @@ export default function CalendarHeader({ selectedDate, onDateSelect }: CalendarH
     return date.isSame(dayjs(), 'day');
   };
 
+  // Check if a day has any conflicted events
+  const hasConflict = (date: dayjs.Dayjs) => {
+    return events.some(event => 
+      dayjs(event.startTime).isSame(date, 'day') && event.hasConflict
+    );
+  };
+
   return (
     <View style={styles.container}>
       {/* Month/Year header with navigation */}
@@ -66,6 +75,7 @@ export default function CalendarHeader({ selectedDate, onDateSelect }: CalendarH
         {weekDays.map((day, index) => {
           const selected = isSelected(day);
           const today = isToday(day);
+          const conflict = hasConflict(day);
 
           return (
             <TouchableOpacity
@@ -74,6 +84,7 @@ export default function CalendarHeader({ selectedDate, onDateSelect }: CalendarH
                 styles.dayButton,
                 selected && styles.dayButtonSelected,
                 today && !selected && styles.dayButtonToday,
+                conflict && !selected && styles.dayButtonConflict,
               ]}
               onPress={() => handleDayPress(day)}
             >
@@ -82,6 +93,7 @@ export default function CalendarHeader({ selectedDate, onDateSelect }: CalendarH
                   styles.dayName,
                   selected && styles.dayNameSelected,
                   today && !selected && styles.dayNameToday,
+                  conflict && !selected && styles.dayNameConflict,
                 ]}
               >
                 {day.format('ddd')}
@@ -91,10 +103,14 @@ export default function CalendarHeader({ selectedDate, onDateSelect }: CalendarH
                   styles.dayNumber,
                   selected && styles.dayNumberSelected,
                   today && !selected && styles.dayNumberToday,
+                  conflict && !selected && styles.dayNumberConflict,
                 ]}
               >
                 {day.format('D')}
               </Text>
+              {conflict && !selected && (
+                <View style={styles.conflictDot} />
+              )}
             </TouchableOpacity>
           );
         })}
@@ -153,6 +169,11 @@ const styles = StyleSheet.create({
     borderColor: '#007AFF',
     backgroundColor: '#fff',
   },
+  dayButtonConflict: {
+    backgroundColor: '#FFEBEE',
+    borderWidth: 2,
+    borderColor: '#F44336',
+  },
   dayName: {
     fontSize: 12,
     color: '#666',
@@ -166,6 +187,10 @@ const styles = StyleSheet.create({
     color: '#007AFF',
     fontWeight: '600',
   },
+  dayNameConflict: {
+    color: '#F44336',
+    fontWeight: '600',
+  },
   dayNumber: {
     fontSize: 16,
     fontWeight: '600',
@@ -176,6 +201,16 @@ const styles = StyleSheet.create({
   },
   dayNumberToday: {
     color: '#007AFF',
+  },
+  dayNumberConflict: {
+    color: '#F44336',
+  },
+  conflictDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#F44336',
+    marginTop: 2,
   },
 });
 
