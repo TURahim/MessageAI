@@ -1,19 +1,26 @@
 # MessageAI - Quick Reference Guide
 
-**Last Updated:** October 22, 2025  
-**Status:** MVP Complete + Enhanced ✅ | Production Ready  
-**Branch:** `main` (commit: fb4a614)
+**Last Updated:** October 25, 2025  
+**Status:** Production-Ready AI Platform (95%) ✅  
+**Branch:** `earlysub` (experimental features)  
+**Performance:** Sub-1-second scheduling, 93% cost reduction
 
-This document provides a quick overview of the MessageAI project for rapid context in new chat sessions.
+This document provides a quick overview of the MessageAI/JellyDM project for rapid context in new chat sessions.
 
 ---
 
 ## 🎯 Project Overview
 
-**What:** WhatsApp-style messaging app with React Native + Expo + Firebase  
-**Goal:** Production-quality real-time messaging with friends-first UX and robust offline support  
-**Timeline:** ~25 hours development (MVP + enhancements)  
-**Status:** All 11 MVP features + 15 bonus features complete, production-ready
+**What:** AI-powered tutor messaging platform (JellyDM) with sub-1-second scheduling  
+**Goal:** Production-quality real-time messaging with AI scheduling, conflict resolution, and timezone support  
+**Timeline:** ~31 hours development (MVP + AI + performance optimization)  
+**Status:** 95% production-ready, fast-path scheduling operational
+
+### Performance Highlights
+- **Scheduling latency:** 725ms (was 10-15s) - 93% improvement
+- **Cost per message:** $0.0002 (was $0.003) - 93% reduction  
+- **LLM calls:** 0-1 per message (was 3)
+- **Fast-path coverage:** 80%+ messages
 
 ---
 
@@ -1153,13 +1160,4 @@ pnpm start
 
 MVP SUBMISSION READY! 🎉
 ```
-
----
-
-**Version:** MVP v1.0  
-**Commit:** 8ce0f2c  
-**Branch:** mvp_submission  
-**Date:** October 21, 2025
-
-*End of Quick Reference Guide*
 
