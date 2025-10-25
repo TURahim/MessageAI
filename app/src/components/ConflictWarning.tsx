@@ -43,7 +43,7 @@ export default function ConflictWarning({ conflict, onSelectAlternative }: Confl
       <Text style={styles.context}>This overlaps with another session. Pick a new time below:</Text>
 
       {/* Compact alternative chips */}
-      {alternatives.length > 0 && (
+      {alternatives.length > 0 ? (
         <View style={styles.alternatives}>
           {alternatives.map((alt, index) => {
             const start = dayjs(alt.startTime.toDate());
@@ -67,6 +67,10 @@ export default function ConflictWarning({ conflict, onSelectAlternative }: Confl
             );
           })}
         </View>
+      ) : (
+        <Text style={styles.noAlternatives}>
+          No alternative times available. Please manually reschedule in the Schedule tab.
+        </Text>
       )}
 
       {/* Secondary actions */}
@@ -151,6 +155,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#7C3AED',
     fontWeight: '500',
+  },
+  noAlternatives: {
+    fontSize: 13,
+    color: '#666',
+    fontStyle: 'italic',
+    textAlign: 'center',
+    marginVertical: 12,
   },
   timezone: {
     fontSize: 11,

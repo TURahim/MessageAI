@@ -119,7 +119,26 @@ export async function scheduleFastPath(
       };
     }
 
-    // Step 5: Post templated confirmation (no LLM!)
+    // Check if there was a conflict
+    if (eventResult.data.hasConflict) {
+      logger.info('⚠️ Fast-path: Conflict detected, skipping confirmation', {
+        correlationId,
+        eventId: eventResult.data.eventId,
+      });
+      
+      // Conflict handler already posted the conflict card
+      // Don't post a regular confirmation
+      const totalLatency = Date.now() - t_start;
+      
+      return {
+        success: true,
+        usedFastPath: true,
+        eventId: eventResult.data.eventId,
+        latency: totalLatency,
+      };
+    }
+
+    // Step 5: Post templated confirmation (no LLM!) - only if NO conflict
     const t_confirmStart = Date.now();
     const confirmationText = formatEventConfirmation(
       title,

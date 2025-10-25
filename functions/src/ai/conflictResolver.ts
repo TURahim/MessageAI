@@ -143,7 +143,19 @@ export async function generateAlternatives(
 
     // Validation: Check each alternative
     const BUFFER_MINUTES = 15;
+    const now = new Date();
+    
     const validAlternatives = alternatives.filter(alt => {
+      // CRITICAL: Must be in the future
+      if (alt.startTime < now) {
+        logger.warn('⚠️ Alternative in the past, rejecting', {
+          correlationId,
+          altStart: alt.startTime.toISOString(),
+          now: now.toISOString(),
+        });
+        return false;
+      }
+
       // Must differ from proposed window (with buffer)
       const differentFromProposed = 
         Math.abs(alt.startTime.getTime() - context.proposedStartTime.getTime()) > BUFFER_MINUTES * 60 * 1000 ||
@@ -388,7 +400,14 @@ async function buildConflictResolutionPrompt(
     .map(e => `- ${e.title}: ${formatTime(e.startTime, tz)} - ${formatTime(e.endTime, tz)}`)
     .join('\n');
 
+  // Add current date/time context for the AI
+  const now = new Date();
+  const todayStr = formatTime(now, tz);
+  const currentYear = now.getFullYear();
+
   return `You are helping reschedule a tutoring session that conflicts with existing appointments.
+
+**IMPORTANT: Today is ${todayStr}, ${currentYear}. All suggested times must be in the future (after ${now.toISOString()}).**
 
 **Proposed Session:**
 - Start: ${formatTime(context.proposedStartTime, tz)} (${tz})

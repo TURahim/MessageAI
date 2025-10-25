@@ -291,9 +291,9 @@ async function buildConflictMessage(
   alternatives: AlternativeTimeSlot[],
   userId: string
 ): Promise<string> {
-  // Ultra-compact message - details shown in ConflictWarning card
-  // Avoid duplication since the card component will display all details
-  return `⚠️ Scheduling conflict - see alternatives below`;
+  // Return empty string - card shows all details
+  // Text will be blank, only ConflictWarning card displays
+  return '';
 }
 
 /**
