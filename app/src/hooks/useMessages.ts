@@ -13,7 +13,7 @@ import {
 import { db } from '@/lib/firebase';
 import { Message } from '@/types/message';
 
-const MESSAGES_PER_PAGE = 50;
+const MESSAGES_PER_PAGE = 20;
 
 interface UseMessagesResult {
   messages: Message[];
@@ -25,7 +25,7 @@ interface UseMessagesResult {
 
 /**
  * Hook for paginated message loading
- * - Loads most recent 50 messages initially
+ * - Loads most recent 20 messages initially
  * - Can load older messages with loadMore()
  * - Maintains scroll position when prepending
  */

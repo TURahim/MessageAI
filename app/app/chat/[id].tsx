@@ -42,6 +42,7 @@ export default function ChatRoomScreen() {
   const [showRetryBanner, setShowRetryBanner] = useState(false);
   const previousOnlineStatus = useRef<boolean>(true);
   const retryBannerTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flashListRef = useRef<any>(null);
   
   const conversationId = id || "demo-conversation-1";
   const currentUserId = auth.currentUser?.uid || "anonymous";
@@ -322,6 +323,16 @@ export default function ChatRoomScreen() {
 
     return () => unsubscribe();
   }, [conversationId, currentUserId]);
+
+  // Auto-scroll to bottom when messages load or new messages arrive
+  useEffect(() => {
+    if (!loading && allMessages.length > 0 && flashListRef.current) {
+      // Small delay to ensure FlashList is rendered
+      setTimeout(() => {
+        flashListRef.current?.scrollToIndex({ index: 0, animated: false });
+      }, 100);
+    }
+  }, [loading, allMessages.length]);
 
   // Update header with conversation name and online indicator
   useEffect(() => {
@@ -639,6 +650,7 @@ export default function ChatRoomScreen() {
         </View>
       ) : (
         <FlashList
+          ref={flashListRef}
           data={[...allMessages].reverse()}
           renderItem={({ item }) => (
             <MessageBubble

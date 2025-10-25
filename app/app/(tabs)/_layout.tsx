@@ -11,6 +11,14 @@ export default function TabLayout() {
           backgroundColor: '#fff',
           borderTopColor: '#e0e0e0',
           borderTopWidth: 1,
+          height: 70,
+          paddingBottom: 10,
+          paddingTop: 6,
+        },
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: '600',
+          marginBottom: 2,
         },
       }}
     >
@@ -24,10 +32,8 @@ export default function TabLayout() {
               name={focused ? 'chatbubbles' : 'chatbubbles-outline'} 
               color={color} 
               focused={focused}
-              label="Chats"
             />
           ),
-          tabBarLabel: () => null,
         }} 
       />
       <Tabs.Screen 
@@ -40,10 +46,8 @@ export default function TabLayout() {
               name={focused ? 'calendar' : 'calendar-outline'} 
               color={color} 
               focused={focused}
-              label="Schedule"
             />
           ),
-          tabBarLabel: () => null,
         }} 
       />
       <Tabs.Screen 
@@ -56,10 +60,8 @@ export default function TabLayout() {
               name={focused ? 'checkmark-circle' : 'checkmark-circle-outline'} 
               color={color} 
               focused={focused}
-              label="Tasks"
             />
           ),
-          tabBarLabel: () => null,
         }} 
       />
       <Tabs.Screen 
@@ -67,15 +69,7 @@ export default function TabLayout() {
         options={{ 
           title: 'Assistant',
           headerShown: true,
-          tabBarIcon: ({ color, focused }) => (
-            <TabIcon 
-              name={focused ? 'sparkles' : 'sparkles-outline'} 
-              color={color} 
-              focused={focused}
-              label="Assistant"
-            />
-          ),
-          tabBarLabel: () => null,
+          href: null, // Hide from tab bar
         }} 
       />
       <Tabs.Screen 
@@ -88,10 +82,8 @@ export default function TabLayout() {
               name={focused ? 'person' : 'person-outline'} 
               color={color} 
               focused={focused}
-              label="Profile"
             />
           ),
-          tabBarLabel: () => null,
         }} 
       />
     </Tabs>

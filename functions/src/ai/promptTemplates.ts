@@ -277,52 +277,64 @@ export function buildOrchestrationPrompt(
     : 'Be casual and brief. Keep responses short and natural.';
   
   if (taskType === 'scheduling') {
-    return `You are a scheduling assistant for a tutoring platform. Help create a calendar event from this message.
+    return `You are a scheduling assistant for a tutoring platform.
 
 **User Message:** "${message}"
 
-**Conversation Context (Recent Messages):**
+**Conversation Context:**
 ${ragContext || 'No recent context available'}
 
 **Current Time:** ${currentTime}
-**Timezone:** America/New_York (default - will be provided in tool calls)
 **User ID:** ${userId}
 **Conversation ID:** ${conversationId}
-
 **Tone:** ${toneGuidance}
 
-**CRITICAL 3-STEP WORKFLOW (YOU MUST COMPLETE ALL 3 STEPS):**
+**CRITICAL: Determine Intent First**
 
-STEP 1: Parse Time
-→ Call time.parse with the user's message to extract the date/time
+Does the user message contain a SPECIFIC TIME?
+- "lesson Monday 3pm" → YES, specific time
+- "session tomorrow at 5" → YES, specific time
+- "review Friday 2pm" → YES, specific time
 
-STEP 2: Create Event
-→ Call schedule.create_event with the parsed time, title, and participants
+OR is the user ASKING FOR SUGGESTIONS?
+- "when are we free next week?" → ASKING
+- "sometime when both of us are free" → ASKING
+- "preferably afternoon but morning works" → ASKING
 
-STEP 3: Post Confirmation (MANDATORY - NEVER SKIP THIS)
-→ Call messages.post_system with:
-  • text: "I've scheduled [title] for [day] at [time]."
-  • meta: { type: 'event', eventId: [from step 2], title, startTime, endTime, status: 'pending' }
+---
 
-**Instructions:**
-- Extract event title (e.g., "Math Tutoring", "Physics Review", "English Lesson")
-- Default duration: 1 hour if not specified
-- Include both participants from the conversation
-- ALWAYS complete all 3 steps - the confirmation message is NOT optional
+**IF SPECIFIC TIME (Definite Scheduling):**
+
+3-STEP WORKFLOW:
+1. Call time.parse to extract the date/time
+2. Call schedule.create_event with parsed time
+3. Call messages.post_system with confirmation
+
+**IF ASKING FOR SUGGESTIONS (Availability Check):**
+
+2-STEP WORKFLOW:
+1. Call schedule.suggest_times with user preferences
+2. Call messages.post_system showing the suggested times (DO NOT create event yet)
+
+Example message: "Here are some times that work for both of you:
+• Monday afternoon (2-3pm)
+• Tuesday morning (10-11am)
+• Wednesday afternoon (3-4pm)
+
+Let me know which works best and I'll schedule it!"
+
+---
 
 **Available Tools:**
-- time.parse: Parse natural language dates (Step 1)
-- schedule.create_event: Create calendar event (Step 2)
-- messages.post_system: Post confirmation with EventCard (Step 3 - REQUIRED)
+- time.parse: Parse definite dates (only for specific times)
+- schedule.suggest_times: Find mutual availability (for open-ended requests)
+- schedule.create_event: Create event (only after user confirms a time)
+- messages.post_system: Post confirmation or suggestions
 
-**EXECUTION POLICY:**
-- Execute ONLY these 3 steps in order
-- STOP after posting confirmation message via messages.post_system
-- Do NOT create additional tasks or schedule reminders
-- Do NOT call any tools beyond the 3-step workflow
-- If you've completed all 3 steps, you're done - STOP
-
-YOU MUST CALL messages.post_system AFTER CREATING THE EVENT. This is not optional.`;
+**POLICY:**
+- NEVER create an event if the user is asking for suggestions
+- ALWAYS suggest first, create after confirmation
+- If unclear, prefer suggesting over creating`;
   } else if (taskType === 'rsvp') {
     return `You are helping process an RSVP response to an event invitation.
 

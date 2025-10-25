@@ -11,6 +11,7 @@
 export type ToolName =
   | 'time.parse'
   | 'schedule.create_event'
+  | 'schedule.suggest_times'
   | 'schedule.check_conflicts'
   | 'rsvp.create_invite'
   | 'rsvp.record_response'
@@ -53,6 +54,31 @@ export interface ScheduleCreateEventOutput {
   hasConflict?: boolean;
   conflictMessage?: string;
   wasDeduped?: boolean; // Idempotency: true if event already existed
+  error?: string;
+}
+
+/**
+ * schedule.suggest_times tool - Suggest available time slots
+ */
+export interface ScheduleSuggestTimesInput {
+  participants: string[]; // User IDs to check availability for
+  preferences: {
+    timeframe: string; // "next week", "this weekend"
+    timeOfDay?: 'morning' | 'afternoon' | 'evening' | 'anytime';
+    duration?: number; // Minutes (default 60)
+  };
+  conversationId: string;
+  timezone: string; // User timezone
+}
+
+export interface ScheduleSuggestTimesOutput {
+  success: boolean;
+  suggestions?: Array<{
+    startTime: string; // ISO UTC
+    endTime: string; // ISO UTC
+    label: string; // Human-readable (e.g., "Mon afternoon", "Tue morning")
+    score: number; // 0-100
+  }>;
   error?: string;
 }
 

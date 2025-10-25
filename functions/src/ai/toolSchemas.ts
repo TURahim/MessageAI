@@ -66,7 +66,26 @@ export const scheduleCreateEventSchema = tool({
 });
 
 /**
- * 3. schedule.check_conflicts - Check for scheduling conflicts
+ * 3. schedule.suggest_times - Suggest available time slots
+ * 
+ * Use when user asks "when are we free?" instead of proposing a specific time
+ */
+export const scheduleSuggestTimesSchema = tool({
+  description: 'Suggest 2-3 available time slots when user asks for suggestions (not a specific time)',
+  parameters: z.strictObject({
+    participants: z.array(UserId).min(1).describe('User IDs to check availability for'),
+    preferences: z.object({
+      timeframe: z.string().describe('When to look (e.g., "next week", "this weekend")'),
+      timeOfDay: z.enum(['morning', 'afternoon', 'evening', 'anytime']).optional(),
+      duration: z.number().min(30).max(240).default(60).describe('Session duration in minutes'),
+    }).describe('User preferences for scheduling'),
+    conversationId: ConversationId.describe('Conversation ID'),
+    timezone: IANATimezone.describe('REQUIRED - User timezone'),
+  }),
+});
+
+/**
+ * 4. schedule.check_conflicts - Check for scheduling conflicts
  * 
  * CRITICAL: timezone is REQUIRED
  */
@@ -155,6 +174,7 @@ export const messagesPostSystemSchema = tool({
 export const allToolSchemas = {
   'time.parse': timeParseSchema,
   'schedule.create_event': scheduleCreateEventSchema,
+  'schedule.suggest_times': scheduleSuggestTimesSchema,
   'schedule.check_conflicts': scheduleCheckConflictsSchema,
   'rsvp.create_invite': rsvpCreateInviteSchema,
   'rsvp.record_response': rsvpRecordResponseSchema,
@@ -182,10 +202,10 @@ export const TIMEZONE_REQUIRED_TOOLS: string[] = [
 export function getToolsForTaskType(taskType: string) {
   switch (taskType) {
     case 'scheduling':
-      // Strict toolset: ONLY parsing, event creation, and confirmation
-      // Removed schedule.check_conflicts and rsvp.create_invite to reduce model confusion
+      // Strict toolset: ONLY parsing, event creation, suggestions, and confirmation
       return {
         'time.parse': timeParseSchema,
+        'schedule.suggest_times': scheduleSuggestTimesSchema,
         'schedule.create_event': scheduleCreateEventSchema,
         'messages.post_system': messagesPostSystemSchema,
       };

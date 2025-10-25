@@ -19,6 +19,8 @@ import type {
   TimeParseOutput,
   ScheduleCreateEventInput,
   ScheduleCreateEventOutput,
+  ScheduleSuggestTimesInput,
+  ScheduleSuggestTimesOutput,
   ScheduleCheckConflictsInput,
   ScheduleCheckConflictsOutput,
   RSVPCreateInviteInput,
@@ -207,8 +209,11 @@ async function executeToolHandler(toolName: ToolName, params: any): Promise<any>
     case 'schedule.create_event':
       return handleScheduleCreateEvent(params as ScheduleCreateEventInput);
     
+    case 'schedule.suggest_times':
+      return handleScheduleSuggestTimes(params as any);
+    
     case 'schedule.check_conflicts':
-      return handleScheduleCheckConflicts(params as ScheduleCheckConflictsInput);
+      return handleScheduleCheckConflicts(params as any);
     
     case 'rsvp.create_invite':
       return handleRSVPCreateInvite(params as RSVPCreateInviteInput);
@@ -487,6 +492,90 @@ async function handleScheduleCreateEvent(params: ScheduleCreateEventInput): Prom
     });
 
     throw new Error(`SCHEDULE_CREATE_FAILED: ${error.message}`);
+  }
+}
+
+async function handleScheduleSuggestTimes(params: ScheduleSuggestTimesInput): Promise<ScheduleSuggestTimesOutput> {
+  const { participants, preferences, timezone } = params;
+
+  logger.info('🔍 schedule.suggest_times called', {
+    participants: participants.length,
+    timeframe: preferences.timeframe,
+    timeOfDay: preferences.timeOfDay,
+  });
+
+  try {
+    // Use conflict resolver's generateAlternatives logic but for open-ended availability
+    // This finds free slots across all participants
+    const { generateAlternatives } = await import('./conflictResolver');
+    const { getUserWorkingHours } = await import('../utils/availability');
+    
+    // Get working hours for primary user (first participant)
+    const primaryUser = participants[0];
+    const workingHours = await getUserWorkingHours(primaryUser);
+    
+    // Create a "fake" conflict context to reuse alternative generation logic
+    // The conflict engine will find free slots
+    const now = new Date();
+    
+    const context = {
+      proposedStartTime: now, // Not actually proposing, just need context
+      proposedEndTime: new Date(now.getTime() + (preferences.duration || 60) * 60 * 1000),
+      conflictingEvents: [], // Empty - we want all free slots
+      userId: primaryUser,
+      timezone,
+      sessionDuration: preferences.duration || 60,
+      workingHours,
+    };
+    
+    // Generate alternatives (which are actually availability suggestions)
+    const alternatives = await generateAlternatives(context);
+    
+    // Filter by timeOfDay preference if specified
+    let filtered = alternatives;
+    if (preferences.timeOfDay && preferences.timeOfDay !== 'anytime') {
+      filtered = alternatives.filter(alt => {
+        const hour = new Date(alt.startTime).getUTCHours();
+        
+        switch (preferences.timeOfDay) {
+          case 'morning':
+            return hour >= 6 && hour < 12;
+          case 'afternoon':
+            return hour >= 12 && hour < 17;
+          case 'evening':
+            return hour >= 17 && hour < 21;
+          default:
+            return true;
+        }
+      });
+    }
+    
+    // Take top 3
+    const suggestions = filtered.slice(0, 3).map(alt => ({
+      startTime: alt.startTime.toISOString(),
+      endTime: alt.endTime.toISOString(),
+      label: alt.reason || 'Available slot',
+      score: alt.score,
+    }));
+    
+    logger.info('✅ Time suggestions generated', {
+      count: suggestions.length,
+      timeOfDay: preferences.timeOfDay,
+    });
+    
+    return {
+      success: true,
+      suggestions,
+    };
+  } catch (error: any) {
+    logger.error('❌ Suggest times failed', {
+      error: error.message,
+    });
+    
+    return {
+      success: false,
+      error: `SUGGEST_TIMES_FAILED: ${error.message}`,
+    };
   }
 }
 
