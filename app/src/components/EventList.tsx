@@ -7,7 +7,7 @@ import EmptyState from './EmptyState';
 interface EventListProps {
   events: Event[];
   onEventPress: (event: Event) => void;
-  selectedDate?: Date;
+  selectedDate?: Date | null;
 }
 
 interface EventSection {

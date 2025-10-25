@@ -51,6 +51,10 @@ export interface CreateEventInput {
   conversationId?: string;
   createdBy: string;
   location?: string;
+  // Tutor-Parent specific fields
+  tutorId: string; // Always the tutor (creator for tutor-created events)
+  parentIds: string[]; // One or more parents attending
+  studentContext?: string; // Optional student initials/name for context
 }
 
 /**
@@ -63,6 +67,9 @@ export interface UpdateEventInput {
   participants?: string[];
   status?: 'pending' | 'confirmed' | 'declined';
   location?: string;
+  tutorId?: string;
+  parentIds?: string[];
+  studentContext?: string;
 }
 
 /**
