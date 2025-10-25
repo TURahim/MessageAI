@@ -130,8 +130,15 @@ export default function ChatRoomScreen() {
     
     // Sort by timestamp (clientTimestamp for optimistic, serverTimestamp for synced)
     merged.sort((a, b) => {
-      const aTime = (a.serverTimestamp || a.clientTimestamp).toMillis();
-      const bTime = (b.serverTimestamp || b.clientTimestamp).toMillis();
+      const aTimestamp = a.serverTimestamp || a.clientTimestamp;
+      const bTimestamp = b.serverTimestamp || b.clientTimestamp;
+      
+      // Handle null timestamps gracefully
+      if (!aTimestamp) return 1; // Put at end
+      if (!bTimestamp) return -1; // Put at end
+      
+      const aTime = aTimestamp.toMillis();
+      const bTime = bTimestamp.toMillis();
       return bTime - aTime; // Newest first (descending)
     });
     

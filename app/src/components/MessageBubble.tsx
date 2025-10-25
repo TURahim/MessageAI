@@ -216,10 +216,12 @@ export default function MessageBubble({
     if (!message.meta?.conflict) return;
     
     try {
-      const { collection, addDoc, serverTimestamp } = await import('firebase/firestore');
+      const { collection, addDoc, Timestamp } = await import('firebase/firestore');
       const { db, auth } = await import('@/lib/firebase');
       
       // Post reschedule request to backend via a special message
+      const now = Timestamp.now();
+      
       await addDoc(collection(db, 'conversations', message.conversationId, 'messages'), {
         senderId: auth.currentUser?.uid || message.senderId,
         type: 'text',
@@ -229,8 +231,8 @@ export default function MessageBubble({
           conflictId: message.meta.conflict.eventId || message.meta.conflict.conflictId,
           alternativeIndex: index,
         },
-        clientTimestamp: serverTimestamp(),
-        serverTimestamp: serverTimestamp(),
+        clientTimestamp: now,
+        serverTimestamp: now,
         status: 'sent',
         readBy: [],
         readCount: 0,
@@ -238,9 +240,10 @@ export default function MessageBubble({
       });
       
       // Backend will handle the reschedule and post confirmation
-      Alert.alert('Rescheduling', 'Your event is being rescheduled...');
+      // Message will be deleted by backend before it renders
     } catch (error: any) {
       Alert.alert('Error', 'Failed to reschedule. Please try again.');
+      console.error('Reschedule error:', error);
     }
   };
   // END MOCK_CARD_HANDLERS
