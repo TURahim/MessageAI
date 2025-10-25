@@ -33,7 +33,7 @@ import type {
   RemindersScheduleOutput,
   MessagesPostSystemInput,
   MessagesPostSystemOutput,
-} from '../../../app/src/types/toolTypes';
+} from '../types/toolTypes';
 
 const MAX_RETRIES = 3;
 const RETRY_DELAYS = [1000, 2000, 4000]; // ms

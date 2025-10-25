@@ -9,7 +9,7 @@
  * - PII minimization (replace names with IDs)
  */
 
-import type { SearchResult, RAGContext } from '../../../app/src/types/aiTypes';
+import type { SearchResult, RAGContext } from '../types/aiTypes';
 import * as logger from 'firebase-functions/logger';
 
 const MAX_CONTEXT_TOKENS = 4096;
