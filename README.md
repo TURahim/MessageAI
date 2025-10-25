@@ -19,14 +19,14 @@ A production-quality real-time messaging application with offline support, optim
 - ✅ **Phase 6:** Friends-first UX, group info, offline sync enhancements (Complete)
 - ✅ **Phase 7:** Remote push notifications via Cloud Functions (Complete)
 
-**JellyDM AI Tutor Platform (Phases 8-10):**
+**Tutorly AI Tutor Platform (Phases 8-10):**
 - ✅ **Phase 8:** UI Transformation (Complete) - 5 tabs, AI-aware chat
 - ✅ **Phase 9:** AI Backend Integration (Complete) - All 15 backend PRs
 - ✅ **Phase 10:** Performance & UX (Complete) - Fast-path, conflicts, timezones
 
 **🎉 PRODUCTION-READY:** AI-powered tutor platform with sub-1-second scheduling, conflict resolution, timezone support, and comprehensive security. Ready for beta testing!
 
-### All 11 MVP Features Complete + JellyDM Enhancements 🚀
+### All 11 MVP Features Complete + Tutorly Enhancements 🚀
 - ✅ Email/password authentication (Google Sign-In removed)
 - ✅ User profiles with photo upload to Firebase Storage
 - ✅ Create & manage conversations in real-time
@@ -53,7 +53,7 @@ A production-quality real-time messaging application with offline support, optim
 - ✅ Long-press to delete conversations
 - ✅ 0 TypeScript errors in production code
 
-**JellyDM AI Tutor Platform Features (Production-Ready):**
+**Tutorly AI Tutor Platform Features (Production-Ready):**
 - ✅ **5-tab navigation** (Chats, Schedule, Tasks, Assistant, Profile)
 - ✅ **Fast-path scheduling** (<1s latency, 93% faster than before)
 - ✅ **Conflict resolution** (one-tap alternatives, red calendar highlighting)
