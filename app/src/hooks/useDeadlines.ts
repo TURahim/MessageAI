@@ -109,9 +109,14 @@ export function useDeadlines(userId: string | null) {
     }
   };
 
-  const toggleComplete = async (deadlineId: string) => {
+  const toggleComplete = async (deadlineId: string, userName?: string) => {
+    if (!userId) {
+      console.error('❌ Cannot toggle deadline: No user ID');
+      return;
+    }
+
     try {
-      await toggleCompleteService(deadlineId);
+      await toggleCompleteService(deadlineId, userId, userName);
       // Real-time listener will update the UI
     } catch (err: any) {
       console.error('❌ Failed to toggle deadline:', err);

@@ -27,7 +27,7 @@ export default function TasksScreen() {
   };
 
   const handleMarkComplete = (deadlineId: string) => {
-    toggleComplete(deadlineId);
+    toggleComplete(deadlineId, user?.displayName || 'Student');
   };
 
   if (loading) {

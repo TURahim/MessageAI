@@ -175,9 +175,59 @@ export default function MessageBubble({
     }
   };
 
-  const handleMarkDone = () => {
-    // TODO: Wire to taskService when implemented (PR11)
-    Alert.alert('Mark Done', 'Deadline marked as done (mock action)');
+  const handleMarkDone = async () => {
+    if (!message.meta?.deadline?.deadlineId) return;
+    
+    try {
+      const { doc, updateDoc, getDoc, collection, addDoc, serverTimestamp } = await import('firebase/firestore');
+      const { db, auth } = await import('@/lib/firebase');
+      
+      const deadlineRef = doc(db, 'deadlines', message.meta.deadline.deadlineId);
+      const deadlineDoc = await getDoc(deadlineRef);
+      
+      if (!deadlineDoc.exists()) {
+        Alert.alert('Error', 'Task not found');
+        return;
+      }
+      
+      const deadlineData = deadlineDoc.data();
+      
+      // Mark as completed
+      await updateDoc(deadlineRef, {
+        completed: true,
+        completedAt: new Date(),
+        completedBy: auth.currentUser?.uid,
+        updatedAt: new Date(),
+      });
+      
+      // Send notification to assigner (creator)
+      const assignerName = auth.currentUser?.displayName || 'Someone';
+      const conversationId = deadlineData.conversationId;
+      
+      if (conversationId) {
+        await addDoc(collection(db, 'conversations', conversationId, 'messages'), {
+          senderId: 'assistant',
+          senderName: 'JellyDM Assistant',
+          type: 'text',
+          text: `✅ ${assignerName} completed "${deadlineData.title}"`,
+          meta: {
+            role: 'system',
+            deadlineId: message.meta.deadline.deadlineId,
+          },
+          clientTimestamp: serverTimestamp(),
+          serverTimestamp: serverTimestamp(),
+          status: 'sent',
+          retryCount: 0,
+          readBy: [],
+          readCount: 0,
+        });
+      }
+      
+      Alert.alert('Done', 'Task marked as complete. The assigner has been notified.');
+    } catch (error: any) {
+      Alert.alert('Error', 'Failed to mark task as done');
+      console.error('Mark done error:', error);
+    }
   };
 
   // BEGIN MOCK_RSVP_HANDLERS

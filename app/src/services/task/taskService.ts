@@ -70,8 +70,9 @@ export async function addDeadline(input: CreateDeadlineInput): Promise<string> {
 
 /**
  * Toggle deadline completion status
+ * Sends notification to conversation when marked as done
  */
-export async function toggleComplete(deadlineId: string): Promise<void> {
+export async function toggleComplete(deadlineId: string, userId?: string, userName?: string): Promise<void> {
   const deadlineRef = doc(db, 'deadlines', deadlineId);
   const deadlineSnap = await getDoc(deadlineRef);
 
@@ -79,14 +80,47 @@ export async function toggleComplete(deadlineId: string): Promise<void> {
     throw new Error('DEADLINE_NOT_FOUND');
   }
 
-  const currentCompleted = deadlineSnap.data().completed || false;
+  const deadlineData = deadlineSnap.data();
+  const currentCompleted = deadlineData.completed || false;
+  const newCompleted = !currentCompleted;
 
   await updateDoc(deadlineRef, {
-    completed: !currentCompleted,
+    completed: newCompleted,
+    completedAt: newCompleted ? Timestamp.now() : null,
+    completedBy: newCompleted ? userId : null,
     updatedAt: Timestamp.now(),
   });
 
-  console.log('✅ Deadline toggled:', { deadlineId, completed: !currentCompleted });
+  console.log('✅ Deadline toggled:', { deadlineId, completed: newCompleted });
+
+  // Send notification when marked as DONE (not when unmarked)
+  if (newCompleted && deadlineData.conversationId) {
+    const completedByName = userName || 'Someone';
+    
+    try {
+      await addDoc(collection(db, 'conversations', deadlineData.conversationId, 'messages'), {
+        senderId: 'assistant',
+        senderName: 'JellyDM Assistant',
+        type: 'text',
+        text: `✅ ${completedByName} completed "${deadlineData.title}"`,
+        meta: {
+          role: 'system',
+          deadlineId: deadlineId,
+        },
+        clientTimestamp: Timestamp.now(),
+        serverTimestamp: Timestamp.now(),
+        status: 'sent',
+        retryCount: 0,
+        readBy: [],
+        readCount: 0,
+      });
+      
+      console.log('📨 Sent completion notification to conversation');
+    } catch (error) {
+      console.error('❌ Failed to send completion notification:', error);
+      // Don't throw - task is still marked done
+    }
+  }
 }
 
 /**
