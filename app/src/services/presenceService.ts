@@ -13,6 +13,12 @@ export async function updatePresence(
   activeConversationId: string | null
 ): Promise<void> {
   try {
+    // Verify userId is valid before attempting update
+    if (!userId || userId.length === 0) {
+      console.warn('⚠️ Invalid userId for presence update, skipping');
+      return;
+    }
+    
     const userRef = doc(db, 'users', userId);
     
     // Use setDoc with merge instead of update to handle non-existent documents
@@ -28,7 +34,10 @@ export async function updatePresence(
       activeConversation: activeConversationId?.substring(0, 12) || 'none'
     });
   } catch (error: any) {
-    console.warn('⚠️ Failed to update presence:', error.message);
+    // Only log if it's not a permission error (which happens during auth initialization)
+    if (!error.message?.includes('permission')) {
+      console.warn('⚠️ Failed to update presence:', error.message);
+    }
     // Don't throw - presence updates should be non-blocking
   }
 }
@@ -55,6 +64,12 @@ export function subscribeToUserPresence(
   onUpdate: (status: PresenceStatus, lastSeen: Timestamp | null) => void,
   onError?: (error: Error) => void
 ): Unsubscribe {
+  // Validate userId before subscribing
+  if (!userId || userId.length === 0) {
+    console.warn('⚠️ Invalid userId for presence subscription, returning no-op');
+    return () => {}; // Return no-op unsubscribe
+  }
+  
   const userRef = doc(db, 'users', userId);
   
   return onSnapshot(
@@ -72,7 +87,10 @@ export function subscribeToUserPresence(
       }
     },
     (error) => {
-      console.warn('Error subscribing to user presence:', error);
+      // Suppress permission errors during auth initialization
+      if (!error.message?.includes('permission')) {
+        console.warn('Error subscribing to user presence:', error);
+      }
       if (onError) onError(error as Error);
     }
   );

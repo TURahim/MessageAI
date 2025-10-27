@@ -307,7 +307,10 @@ OR is the user ASKING FOR SUGGESTIONS?
 
 3-STEP WORKFLOW:
 1. Call time.parse to extract the date/time
-2. Call schedule.create_event with parsed time
+   - If it returns error starting with "PAST_DATE:", DO NOT create event
+   - Instead, call messages.post_system with friendly message: "That time has already passed. Please choose a future date."
+   - STOP - don't proceed to step 2
+2. Call schedule.create_event with parsed time (only if step 1 succeeded)
 3. Call messages.post_system with confirmation
 
 **IF ASKING FOR SUGGESTIONS (Availability Check):**

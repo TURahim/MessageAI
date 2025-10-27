@@ -61,6 +61,31 @@ export async function scheduleFastPath(
     const t_parseEnd = Date.now();
 
     if (!parseResult.success) {
+      // Check if it's a past date rejection
+      if (parseResult.error?.startsWith('PAST_DATE:')) {
+        logger.warn('⚠️ Fast-path: Past date detected, posting rejection', {
+          correlationId,
+          error: parseResult.error,
+        });
+        
+        // Post friendly rejection message
+        await executeTool(
+          'messages.post_system',
+          {
+            conversationId: message.conversationId,
+            text: 'That time has already passed. Please choose a future date to schedule this lesson.',
+            meta: { role: 'assistant' },
+          },
+          { correlationId }
+        );
+        
+        return {
+          success: false,
+          usedFastPath: true, // We handled it (with rejection)
+          reason: 'PAST_DATE_REJECTED',
+        };
+      }
+      
       logger.warn('⚠️ Fast-path: Parse failed', {
         correlationId,
         needsDisambiguation: parseResult.needsDisambiguation,

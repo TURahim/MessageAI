@@ -308,12 +308,13 @@ Return the index of the best match.`;
       };
     }
 
-    // Neither deterministic nor disambiguatable
+    // Neither deterministic nor disambiguatable  
     logger.warn('❌ time.parse failed', {
       text: text.substring(0, 50),
       error: result.error,
     });
 
+    // Return the specific error (especially PAST_DATE for friendly rejection)
     return {
       success: false,
       confidence: result.confidence,
@@ -396,8 +397,7 @@ async function handleScheduleCreateEvent(params: ScheduleCreateEventInput): Prom
       timezone
     );
 
-    // If conflict detected, alternatives are already posted to conversation
-    // Still create the event but mark it with conflict warning
+    // Create the event first (needed for eventId in conflict message)
     const eventRef = await admin.firestore().collection('events').add({
       title,
       startTime: admin.firestore.Timestamp.fromDate(startDate),
@@ -418,6 +418,31 @@ async function handleScheduleCreateEvent(params: ScheduleCreateEventInput): Prom
       title,
       hasConflict: conflictResult.hasConflict,
     });
+
+    // If conflict was detected, update the conflict message with the actual eventId
+    if (conflictResult.hasConflict && conversationId) {
+      logger.info('🔄 Updating conflict message with eventId', {
+        eventId: eventRef.id,
+      });
+      
+      const { updateConflictWithEventId } = await import('./conflictHandler');
+      await updateConflictWithEventId(conversationId, eventRef.id);
+    }
+
+    // Skip fallback confirmation if there's a conflict
+    // The conflict handler already posted the conflict card
+    if (conflictResult.hasConflict) {
+      logger.info('⚠️ Conflict detected, skipping fallback confirmation', {
+        eventId: eventRef.id,
+      });
+      
+      return {
+        success: true,
+        eventId: eventRef.id,
+        hasConflict: true,
+        conflictMessage: conflictResult.conflictMessage,
+      };
+    }
 
     // Smart fallback: Wait a moment for GPT-4 to post confirmation, then check if it did
     // This ensures we always have a confirmation without creating duplicates

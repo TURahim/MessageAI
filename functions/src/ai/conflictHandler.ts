@@ -377,21 +377,26 @@ export async function handleAlternativeSelection(
       });
 
     // Find the conflict message to get alternatives
+    // Simplified query to avoid index requirement - get recent messages and filter client-side
     const messagesSnapshot = await admin.firestore()
       .collection('conversations')
       .doc(conversationId)
       .collection('messages')
-      .where('meta.conflict.conflictId', '==', conflictId)
       .orderBy('serverTimestamp', 'desc')
-      .limit(1)
+      .limit(50) // Check last 50 messages
       .get();
 
-    if (messagesSnapshot.empty) {
-      logger.error('❌ Conflict message not found', { correlationId });
+    // Filter client-side for the conflict message
+    const conflictDoc = messagesSnapshot.docs.find(
+      doc => doc.data().meta?.conflict?.conflictId === conflictId
+    );
+
+    if (!conflictDoc) {
+      logger.error('❌ Conflict message not found', { correlationId, conflictId });
       return false;
     }
 
-    const conflictMessage = messagesSnapshot.docs[0].data();
+    const conflictMessage = conflictDoc.data();
     const alternatives = conflictMessage.meta?.conflict?.suggestedAlternatives;
 
     if (!alternatives || alternativeIndex >= alternatives.length) {
@@ -481,6 +486,48 @@ export async function handleAlternativeSelection(
       stack: error.stack,
     });
     return false;
+  }
+}
+
+/**
+ * Update conflict message with actual eventId after event creation
+ * This allows reschedule to find and update the correct event
+ */
+export async function updateConflictWithEventId(
+  conversationId: string,
+  eventId: string
+): Promise<void> {
+  try {
+    // Find the most recent conflict message in this conversation
+    const recentMessages = await admin.firestore()
+      .collection('conversations')
+      .doc(conversationId)
+      .collection('messages')
+      .orderBy('serverTimestamp', 'desc')
+      .limit(10)
+      .get();
+    
+    // Find conflict message (should be very recent)
+    const conflictDoc = recentMessages.docs.find(
+      doc => doc.data().meta?.conflict && !doc.data().meta?.conflict?.eventId
+    );
+    
+    if (conflictDoc) {
+      await conflictDoc.ref.update({
+        'meta.conflict.eventId': eventId,
+      });
+      
+      logger.info('✅ Updated conflict message with eventId', {
+        messageId: conflictDoc.id,
+        eventId,
+      });
+    }
+  } catch (error: any) {
+    logger.error('❌ Failed to update conflict with eventId', {
+      error: error.message,
+      eventId,
+    });
+    // Don't throw - not critical
   }
 }
 

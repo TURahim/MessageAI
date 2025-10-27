@@ -422,8 +422,10 @@ export async function processMessageWithAI(
       });
 
       // Execute any additional tool calls from Round 2 (if any)
-      if (round2Result.toolCalls && round2Result.toolCalls.length > 0) {
-        for (const toolCall of round2Result.toolCalls) {
+      const hasToolCalls = round2Result.toolCalls && round2Result.toolCalls.length > 0;
+      
+      if (hasToolCalls) {
+        for (const toolCall of round2Result.toolCalls!) {
           // Convert normalized name back to original: "schedule_create_event" → "schedule.create_event"
           const normalizedName = toolCall.toolName;
           const originalToolName = reverseToolNameMap.get(normalizedName) || normalizedName;
@@ -436,6 +438,31 @@ export async function processMessageWithAI(
 
           await executeTool(originalToolName as any, toolCall.args, { correlationId });
         }
+      }
+      
+      // ALWAYS check if we need to post text (even if there were tool calls)
+      // Check if messages.post_system was NOT called in Round 2
+      const calledPostSystem = hasToolCalls && round2Result.toolCalls!.some(
+        tc => tc.toolName === 'messages_post_system'
+      );
+      
+      if (!calledPostSystem && round2Result.text && round2Result.text.trim().length > 0) {
+        // Fallback: If GPT returned text but didn't call messages.post_system, post it anyway
+        logger.warn('⚠️ GPT returned text without calling messages.post_system, posting fallback', {
+          correlationId,
+          textLength: round2Result.text.length,
+          hadToolCalls: hasToolCalls,
+        });
+
+        await executeTool(
+          'messages.post_system',
+          {
+            conversationId: message.conversationId,
+            text: round2Result.text,
+            meta: { role: 'assistant' },
+          },
+          { correlationId }
+        );
       }
     } else {
       // No tools in Round 1, stop early

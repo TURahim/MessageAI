@@ -39,27 +39,7 @@ export function parseDateTime(
     const now = new Date();
     const customChrono = chrono.casual.clone();
     
-    // Configure to prefer future dates (don't select past dates for relative expressions)
-    customChrono.refiners.push({
-      refine: (context, results) => {
-        results.forEach((result) => {
-          const resultDate = result.start.date();
-          
-          // If the parsed date is in the past, move it forward by a week
-          if (resultDate < now) {
-            const daysToAdd = 7;
-            const newDate = new Date(resultDate);
-            newDate.setDate(newDate.getDate() + daysToAdd);
-            
-            result.start.assign('day', newDate.getDate());
-            result.start.assign('month', newDate.getMonth() + 1);
-            result.start.assign('year', newDate.getFullYear());
-          }
-        });
-        
-        return results;
-      }
-    });
+    // No refiner needed - we'll validate after parsing
     
     const results = customChrono.parse(text, now);
 
@@ -85,6 +65,29 @@ export function parseDateTime(
     if (results.length === 1 && hasHour) {
       const startDate = firstResult.start.date();
       let endDate = firstResult.end?.date();
+
+      // Check if it's a past DAY (not same day, earlier hour)
+      const isSameDay = 
+        startDate.getFullYear() === now.getFullYear() &&
+        startDate.getMonth() === now.getMonth() &&
+        startDate.getDate() === now.getDate();
+      
+      const isPastDay = startDate < now && !isSameDay;
+      
+      if (isPastDay) {
+        logger.warn('⏰ Chrono: Parsed date is in the past', {
+          text: text.substring(0, 50),
+          parsedDate: startDate.toISOString(),
+          now: now.toISOString(),
+        });
+        
+        return {
+          success: false,
+          confidence: 0,
+          needsDisambiguation: false,
+          error: 'PAST_DATE: The specified date has already passed. Please choose a future date.',
+        };
+      }
 
       // If no explicit end time, use default duration
       if (!endDate) {
@@ -137,7 +140,7 @@ export function parseDateTime(
       hasCertainHour: hasHour,
     });
 
-    const candidates = results.slice(0, 3).map(r => {
+    const candidates = results.slice(0, 3).map((r, index) => {
       const startDate = r.start.date();
       const endDate = r.end?.date() || new Date(startDate.getTime() + defaultDurationMinutes * 60 * 1000);
       
@@ -160,10 +163,22 @@ export function parseDateTime(
         second: endDate.getSeconds(),
       }, { zone: timezone });
 
+      logger.info(`📅 Candidate ${index}`, {
+        rawDate: startDate.toISOString(),
+        inTimezone: start.toISO(),
+        asUTC: start.toUTC().toISO(),
+      });
+
       return {
         start: start.toUTC().toISO()!,
         end: end.toUTC().toISO()!,
       };
+    });
+
+    logger.info('📋 All candidates for disambiguation', {
+      text: text.substring(0, 50),
+      count: candidates.length,
+      candidates: candidates.map(c => c.start),
     });
 
     return {
